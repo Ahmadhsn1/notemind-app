@@ -65,6 +65,7 @@ function Dashboard() {
     setBody(note.body);
     setTags(note.tags.join(', '));
     setFolder(note.folder);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
@@ -81,11 +82,13 @@ function Dashboard() {
   };
 
   return (
-    <div>
-      <h2>Welcome, {user?.name}</h2>
-      <button onClick={logout}>Logout</button>
+    <div className="dashboard">
+      <div className="dashboard-header">
+        <h2>Welcome, {user?.name}</h2>
+        <button className="logout-btn" onClick={logout}>Logout</button>
+      </div>
 
-      <form onSubmit={handleSubmit}>
+      <form className="note-form" onSubmit={handleSubmit}>
         <input
           type="text"
           placeholder="Title"
@@ -110,38 +113,47 @@ function Dashboard() {
           value={folder}
           onChange={(e) => setFolder(e.target.value)}
         />
-        <button type="submit">{editingId ? 'Update Note' : 'Add Note'}</button>
-        {editingId && (
-          <button type="button" onClick={handleCancelEdit}>Cancel</button>
-        )}
+        <div className="form-buttons">
+          <button type="submit">{editingId ? 'Update Note' : 'Add Note'}</button>
+          {editingId && (
+            <button type="button" className="cancel-btn" onClick={handleCancelEdit}>
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
 
-      <input
-        type="text"
-        placeholder="Search notes..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-      />
-
-      <select
-        value={selectedFolder}
-        onChange={(e) => setSelectedFolder(e.target.value)}
-      >
-        {folders.map((f) => (
-          <option key={f} value={f}>{f}</option>
-        ))}
-      </select>
-
-      <div>
-        {filteredNotes.map((note) => (
-          <NoteCard
-            key={note._id}
-            note={note}
-            onDelete={handleDelete}
-            onEdit={handleEdit}
-          />
-        ))}
+      <div className="filter-bar">
+        <input
+          type="text"
+          placeholder="Search notes..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <select
+          value={selectedFolder}
+          onChange={(e) => setSelectedFolder(e.target.value)}
+        >
+          {folders.map((f) => (
+            <option key={f} value={f}>{f}</option>
+          ))}
+        </select>
       </div>
+
+      {filteredNotes.length === 0 ? (
+        <p className="empty-state">No notes found. Create your first note above!</p>
+      ) : (
+        <div className="notes-grid">
+          {filteredNotes.map((note) => (
+            <NoteCard
+              key={note._id}
+              note={note}
+              onDelete={handleDelete}
+              onEdit={handleEdit}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
