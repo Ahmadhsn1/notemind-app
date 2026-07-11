@@ -1,4 +1,32 @@
 const Note = require('../models/Note');
+const { summarizeAndTag, answerFromNotes, generateTitle } = require('../services/aiService');
+
+const normalizeFolder = (folder) => (typeof folder === 'string' ? folder.trim() : '') || 'General';
+
+const normalizeTags = (tags) => {
+  if (!Array.isArray(tags)) return [];
+  const cleaned = tags.map((t) => (typeof t === 'string' ? t.trim() : '')).filter(Boolean);
+  return Array.from(new Set(cleaned));
+};
+
+const TOP_NOTES_LIMIT = 6;
+
+// Simple keyword-overlap retrieval — no vector DB needed at this scale.
+// Title matches count more than body matches; words under 3 chars are
+// skipped so common short words don't dominate the score.
+const scoreNoteRelevance = (question, note) => {
+  const words = question.toLowerCase().match(/\w+/g) || [];
+  const title = note.title.toLowerCase();
+  const body = note.body.toLowerCase();
+
+  let score = 0;
+  for (const word of new Set(words)) {
+    if (word.length < 3) continue;
+    if (title.includes(word)) score += 3;
+    if (body.includes(word)) score += 1;
+  }
+  return score;
+};
 
 const getNotes = async (req, res) => {
   try {
@@ -32,8 +60,8 @@ const createNote = async (req, res) => {
       user: req.user.id,
       title,
       body,
-      tags,
-      folder,
+      tags: normalizeTags(tags),
+      folder: normalizeFolder(folder),
     });
 
     res.status(201).json(note);
@@ -52,7 +80,13 @@ const updateNote = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to update this note' });
     }
 
-    const updatedNote = await Note.findByIdAndUpdate(req.params.id, req.body, {
+    const updates = {};
+    if (req.body.title !== undefined) updates.title = req.body.title;
+    if (req.body.body !== undefined) updates.body = req.body.body;
+    if (req.body.tags !== undefined) updates.tags = normalizeTags(req.body.tags);
+    if (req.body.folder !== undefined) updates.folder = normalizeFolder(req.body.folder);
+
+    const updatedNote = await Note.findByIdAndUpdate(req.params.id, updates, {
       new: true,
     });
 
@@ -79,4 +113,91 @@ const deleteNote = async (req, res) => {
   }
 };
 
-module.exports = { getNotes, getNoteById, createNote, updateNote, deleteNote };
+const processNoteWithAI = async (req, res) => {
+  try {
+    const note = await Note.findById(req.params.id);
+    if (!note) {
+      return res.status(404).json({ message: 'Note not found' });
+    }
+    if (note.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized to process this note' });
+    }
+
+    if (!note.body || note.body.trim() === '') {
+      return res.status(400).json({ message: 'Note body is empty, nothing to summarize' });
+    }
+
+    const { summary, tags } = await summarizeAndTag(note.body);
+
+    note.aiSummary = summary;
+    note.tags = normalizeTags([...note.tags, ...tags]);
+    await note.save();
+
+    res.status(200).json(note);
+  } catch (error) {
+    res.status(500).json({ message: 'AI processing failed', error: error.message });
+  }
+};
+
+const askNotes = async (req, res) => {
+  try {
+    const question = typeof req.body.question === 'string' ? req.body.question.trim() : '';
+    if (!question) {
+      return res.status(400).json({ message: 'Question is required' });
+    }
+
+    const notes = await Note.find({ user: req.user.id });
+    const usableNotes = notes.filter((note) => note.body && note.body.trim() !== '');
+
+    if (usableNotes.length === 0) {
+      return res.status(200).json({
+        answer: "You don't have any notes with content yet — add some notes first and I can answer questions about them.",
+        sources: [],
+      });
+    }
+
+    const scored = usableNotes
+      .map((note) => ({ note, score: scoreNoteRelevance(question, note) }))
+      .sort((a, b) => b.score - a.score);
+
+    const hasMatches = scored[0].score > 0;
+    const topNotes = hasMatches
+      ? scored.filter((s) => s.score > 0).slice(0, TOP_NOTES_LIMIT).map((s) => s.note)
+      : [...usableNotes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, TOP_NOTES_LIMIT);
+
+    const { answer, usedNoteIndexes } = await answerFromNotes(question, topNotes);
+
+    const sources = usedNoteIndexes
+      .filter((i) => Number.isInteger(i) && topNotes[i])
+      .map((i) => ({ _id: topNotes[i]._id, title: topNotes[i].title }));
+
+    res.status(200).json({ answer, sources });
+  } catch (error) {
+    res.status(500).json({ message: 'AI question answering failed', error: error.message });
+  }
+};
+
+const suggestTitle = async (req, res) => {
+  try {
+    const body = typeof req.body.body === 'string' ? req.body.body.trim() : '';
+    if (!body) {
+      return res.status(400).json({ message: 'Note body is required to suggest a title' });
+    }
+
+    const title = await generateTitle(body);
+    res.status(200).json({ title });
+  } catch (error) {
+    res.status(500).json({ message: 'Title suggestion failed', error: error.message });
+  }
+};
+
+module.exports = {
+  getNotes,
+  getNoteById,
+  createNote,
+  updateNote,
+  deleteNote,
+  processNoteWithAI,
+  askNotes,
+  suggestTitle,
+};

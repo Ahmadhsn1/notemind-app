@@ -26,10 +26,6 @@ const noteSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
-  aiTags: {
-    type: [String],
-    default: [],
-  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Note', noteSchema);
