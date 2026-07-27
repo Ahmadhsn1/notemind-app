@@ -1,6 +1,22 @@
 const Note = require('../models/Note');
 const { summarizeAndTag, answerFromNotes, generateTitle } = require('../services/aiService');
 
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// Fetches a note and enforces ownership; throws HttpError(404/403) so callers
+// can turn it into the same response they already returned inline.
+const loadOwnedNote = async (id, userId, action) => {
+  const note = await Note.findById(id);
+  if (!note) throw new HttpError(404, 'Note not found');
+  if (note.user.toString() !== userId) throw new HttpError(403, `Not authorized to ${action} this note`);
+  return note;
+};
+
 const normalizeFolder = (folder) => (typeof folder === 'string' ? folder.trim() : '') || 'General';
 
 const normalizeTags = (tags) => {
@@ -39,15 +55,10 @@ const getNotes = async (req, res) => {
 
 const getNoteById = async (req, res) => {
   try {
-    const note = await Note.findById(req.params.id);
-    if (!note) {
-      return res.status(404).json({ message: 'Note not found' });
-    }
-    if (note.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized to view this note' });
-    }
+    const note = await loadOwnedNote(req.params.id, req.user.id, 'view');
     res.status(200).json(note);
   } catch (error) {
+    if (error instanceof HttpError) return res.status(error.status).json({ message: error.message });
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -72,13 +83,7 @@ const createNote = async (req, res) => {
 
 const updateNote = async (req, res) => {
   try {
-    const note = await Note.findById(req.params.id);
-    if (!note) {
-      return res.status(404).json({ message: 'Note not found' });
-    }
-    if (note.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized to update this note' });
-    }
+    await loadOwnedNote(req.params.id, req.user.id, 'update');
 
     const updates = {};
     if (req.body.title !== undefined) updates.title = req.body.title;
@@ -92,36 +97,26 @@ const updateNote = async (req, res) => {
 
     res.status(200).json(updatedNote);
   } catch (error) {
+    if (error instanceof HttpError) return res.status(error.status).json({ message: error.message });
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
 const deleteNote = async (req, res) => {
   try {
-    const note = await Note.findById(req.params.id);
-    if (!note) {
-      return res.status(404).json({ message: 'Note not found' });
-    }
-    if (note.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized to delete this note' });
-    }
+    await loadOwnedNote(req.params.id, req.user.id, 'delete');
 
     await Note.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: 'Note deleted successfully' });
   } catch (error) {
+    if (error instanceof HttpError) return res.status(error.status).json({ message: error.message });
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
 const processNoteWithAI = async (req, res) => {
   try {
-    const note = await Note.findById(req.params.id);
-    if (!note) {
-      return res.status(404).json({ message: 'Note not found' });
-    }
-    if (note.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized to process this note' });
-    }
+    const note = await loadOwnedNote(req.params.id, req.user.id, 'process');
 
     if (!note.body || note.body.trim() === '') {
       return res.status(400).json({ message: 'Note body is empty, nothing to summarize' });
@@ -135,6 +130,7 @@ const processNoteWithAI = async (req, res) => {
 
     res.status(200).json(note);
   } catch (error) {
+    if (error instanceof HttpError) return res.status(error.status).json({ message: error.message });
     res.status(500).json({ message: 'AI processing failed', error: error.message });
   }
 };
