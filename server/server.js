@@ -11,6 +11,7 @@ const authRoutes = require('./routes/authRoutes');
 const noteRoutes = require('./routes/noteRoutes');
 const flashcardRoutes = require('./routes/flashcardRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const { uploadsDir } = require('./services/uploadStorage');
 const { initSocket } = require('./services/socket');
@@ -44,6 +45,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/flashcards', flashcardRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

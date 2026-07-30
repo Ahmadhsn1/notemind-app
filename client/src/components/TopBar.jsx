@@ -1,4 +1,5 @@
 import {useTheme} from '../context/ThemeContext'
+import NotificationBell from './NotificationBell'
 
 function TopBar({searchQuery, onSearchChange, sortMode, onSortChange, viewMode, onViewChange, onOpenSidebar}) {
 	const {theme, toggleTheme} = useTheme()
@@ -52,6 +53,8 @@ function TopBar({searchQuery, onSearchChange, sortMode, onSortChange, viewMode, 
 						className={`${toggleBtnBase} ${viewMode === 'list' ? toggleBtnActive : toggleBtnInactive}`}
 					>☰</button>
 				</div>
+
+				<NotificationBell />
 
 				<button
 					onClick={toggleTheme}

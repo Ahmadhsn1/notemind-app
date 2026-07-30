@@ -12,7 +12,7 @@ const adminAuditLogSchema = new mongoose.Schema({
   },
   action: {
     type: String,
-    enum: ['promote', 'demote', 'suspend', 'unsuspend', 'delete_user', 'reset_password', 'delete_note'],
+    enum: ['promote', 'demote', 'suspend', 'unsuspend', 'delete_user', 'reset_password', 'delete_note', 'send_notification', 'delete_notification'],
     required: true,
   },
   targetUser: {

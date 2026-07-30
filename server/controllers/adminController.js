@@ -5,8 +5,9 @@ const Note = require('../models/Note');
 const NoteVersion = require('../models/NoteVersion');
 const Flashcard = require('../models/Flashcard');
 const AdminAuditLog = require('../models/AdminAuditLog');
+const Notification = require('../models/Notification');
 const HttpError = require('../utils/HttpError');
-const { broadcastAdminUpdate } = require('../services/socket');
+const { broadcastAdminUpdate, pushNotificationToUser } = require('../services/socket');
 
 const ACTIVE_WINDOW_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -15,16 +16,16 @@ const logAction = (req, action, targetUser, targetLabel) =>
   AdminAuditLog.create({ admin: req.user.id, action, targetUser: targetUser || undefined, targetLabel });
 
 // High-level counts for the top of the admin dashboard. "Active" means
-// logged in within the last 7 days (User.lastLoginAt, set on every
-// password/Google login) — the only signal of real usage this app tracks;
-// note-touching activity doesn't update it, since a still-open browser tab
-// could silently keep someone "active" forever otherwise.
+// genuinely used the app within the last 7 days (User.lastActiveAt, kept
+// fresh by middleware/authMiddleware.js's `protect` on every authenticated
+// request, throttled to once/minute per user) — falls back to lastLoginAt
+// for accounts that haven't made a request since this field was introduced.
 const getAdminStats = async (req, res) => {
   const activeSince = new Date(Date.now() - ACTIVE_WINDOW_DAYS * DAY_MS);
 
   const [totalUsers, activeUsers, newUsersThisWeek, totalNotes, totalFlashcards] = await Promise.all([
     User.countDocuments({}),
-    User.countDocuments({ lastLoginAt: { $gte: activeSince } }),
+    User.countDocuments({ $or: [{ lastActiveAt: { $gte: activeSince } }, { lastLoginAt: { $gte: activeSince } }] }),
     User.countDocuments({ createdAt: { $gte: activeSince } }),
     Note.countDocuments({}),
     Flashcard.countDocuments({}),
@@ -61,6 +62,7 @@ const getAdminUsers = async (req, res) => {
         suspended: 1,
         createdAt: 1,
         lastLoginAt: 1,
+        lastActiveAt: 1,
         authProvider: { $cond: [{ $ifNull: ['$googleId', false] }, 'google', 'password'] },
         noteCount: { $size: '$notes' },
         flashcardCount: { $size: '$flashcards' },
@@ -227,6 +229,94 @@ const deleteUserNote = async (req, res) => {
   res.status(200).json({ message: 'Note deleted' });
 };
 
+// Recipients are resolved to a concrete list of user ids right now (not
+// stored as a dynamic "all users" flag) — see Notification.js's comment on
+// why: a broadcast shouldn't retroactively reach someone who signs up
+// afterward. Pushes live to anyone currently connected (services/socket.js's
+// pushNotificationToUser, a harmless no-op for anyone not connected — they
+// still see it via GET /api/notifications on their next load regardless).
+const sendNotification = async (req, res) => {
+  const { message, targetType, userIds } = req.body;
+
+  let recipientUsers;
+  if (targetType === 'all') {
+    recipientUsers = await User.find({}).select('name email');
+  } else {
+    recipientUsers = await User.find({ _id: { $in: userIds } }).select('name email');
+    if (recipientUsers.length !== userIds.length) {
+      throw new HttpError(400, 'One or more selected users do not exist');
+    }
+  }
+
+  const notification = await Notification.create({
+    message,
+    createdBy: req.user.id,
+    recipients: recipientUsers.map((u) => u._id),
+  });
+
+  for (const u of recipientUsers) {
+    pushNotificationToUser(u._id.toString(), {
+      _id: notification._id,
+      message: notification.message,
+      createdAt: notification.createdAt,
+      read: false,
+    });
+  }
+
+  const label = targetType === 'single'
+    ? `${recipientUsers[0].name} (${recipientUsers[0].email})`
+    : `${targetType === 'all' ? 'all users' : 'selected users'} (${recipientUsers.length})`;
+  await logAction(req, 'send_notification', targetType === 'single' ? recipientUsers[0]._id : undefined, label);
+  broadcastAdminUpdate('notification');
+
+  res.status(201).json(notification);
+};
+
+// Recent sends with a per-recipient read breakdown, so the admin can see
+// exactly who has (and hasn't) seen a given notification, not just an
+// aggregate count.
+const getAdminNotifications = async (req, res) => {
+  const notifications = await Notification.find({})
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .populate('recipients', 'name email')
+    .populate('createdBy', 'name email');
+
+  const result = notifications.map((n) => {
+    const readSet = new Set(n.readBy.map((id) => id.toString()));
+    const recipients = n.recipients.map((r) => ({
+      _id: r._id,
+      name: r.name,
+      email: r.email,
+      read: readSet.has(r._id.toString()),
+    }));
+    return {
+      _id: n._id,
+      message: n.message,
+      createdAt: n.createdAt,
+      createdBy: n.createdBy ? { name: n.createdBy.name, email: n.createdBy.email } : null,
+      recipients,
+      readCount: recipients.filter((r) => r.read).length,
+      totalRecipients: recipients.length,
+    };
+  });
+
+  res.status(200).json(result);
+};
+
+// Retracts a sent notification entirely (removed from every recipient's
+// inbox, not just hidden from the admin list).
+const deleteNotification = async (req, res) => {
+  const notification = await Notification.findById(req.params.id);
+  if (!notification) throw new HttpError(404, 'Notification not found');
+
+  await notification.deleteOne();
+
+  await logAction(req, 'delete_notification', undefined, `"${notification.message.slice(0, 60)}"`);
+  broadcastAdminUpdate('notification');
+  res.status(200).json({ message: 'Notification deleted' });
+};
+
 module.exports = {
   getAdminStats,
   getAdminUsers,
@@ -238,4 +328,7 @@ module.exports = {
   deleteUser,
   getUserNotes,
   deleteUserNote,
+  sendNotification,
+  getAdminNotifications,
+  deleteNotification,
 };

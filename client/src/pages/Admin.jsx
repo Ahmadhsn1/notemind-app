@@ -4,10 +4,11 @@ import {io} from 'socket.io-client'
 import api, {API_ORIGIN, getAuthToken} from '../api/axios'
 import {useAuth} from '../context/AuthContext'
 import {useToast} from '../context/ToastContext'
-import {relativeTime} from '../utils/relativeTime'
+import {relativeTime, activityStatus} from '../utils/relativeTime'
 import ConfirmModal from '../components/ConfirmModal'
 import AdminNotesModal from '../components/AdminNotesModal'
 import AdminPasswordResetModal from '../components/AdminPasswordResetModal'
+import SendNotificationModal from '../components/SendNotificationModal'
 
 function StatTile({label, value}) {
 	return (
@@ -52,9 +53,42 @@ const ACTION_VERBS = {
 	delete_user: 'deleted',
 	reset_password: 'reset the password for',
 	delete_note: 'deleted note',
+	send_notification: 'sent a notification to',
+	delete_notification: 'deleted a notification sent to',
 }
 
 const actionBtnClass = 'py-1 px-2 rounded-[6px] text-[11px] font-semibold cursor-pointer transition-[opacity,transform] duration-150 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap'
+
+// Expandable to a per-recipient read breakdown rather than a separate
+// popup — the row itself just toggles, matching how the rest of this page
+// (audit log, users table) already keeps everything inline.
+function NotificationRow({notification, expanded, onToggleExpand, onDelete}) {
+	return (
+		<div className="text-[12.5px]">
+			<div className="flex items-center justify-between gap-3 py-2.5 px-3.5">
+				<button type="button" onClick={onToggleExpand} className="flex-1 min-w-0 text-left cursor-pointer">
+					<p className="text-ink/85 truncate">{notification.message}</p>
+					<span className="text-ink/40 text-[11px]">
+						{notification.readCount}/{notification.totalRecipients} read · {relativeTime(notification.createdAt)}
+					</span>
+				</button>
+				<button
+					onClick={onDelete}
+					className="py-1 px-2 rounded-[6px] text-[11px] font-semibold bg-danger/15 border border-danger/30 text-danger-light hover:bg-danger/25 cursor-pointer shrink-0"
+				>Delete</button>
+			</div>
+			{expanded && (
+				<div className="px-3.5 pb-2.5 flex flex-wrap gap-1.5">
+					{notification.recipients.map((r) => (
+						<span key={r._id} className={`text-[11px] py-[3px] px-2 rounded-full ${r.read ? 'bg-growth/15 text-growth' : 'bg-ink/8 text-ink/50'}`}>
+							{r.name}
+						</span>
+					))}
+				</div>
+			)}
+		</div>
+	)
+}
 
 function Admin() {
 	const {user: currentUser} = useAuth()
@@ -62,6 +96,9 @@ function Admin() {
 	const [users, setUsers] = useState(null)
 	const [growth, setGrowth] = useState(null)
 	const [auditLog, setAuditLog] = useState(null)
+	const [notifications, setNotifications] = useState(null)
+	const [showSendModal, setShowSendModal] = useState(false)
+	const [expandedNotifId, setExpandedNotifId] = useState(null)
 	const [loading, setLoading] = useState(true)
 	const [live, setLive] = useState(false)
 	const [actingOnId, setActingOnId] = useState(null)
@@ -70,6 +107,16 @@ function Admin() {
 	const [passwordResetResult, setPasswordResetResult] = useState(null)
 	const toast = useToast()
 	const mountedRef = useRef(true)
+	// Ticks the "Last active" column live (Active / less than a min / X min)
+	// instead of it being frozen at whatever moment the table last rendered
+	// for some other reason (a socket-triggered refetch, a manual action) —
+	// activityStatus() takes `now` as an argument specifically so re-invoking
+	// it here on every tick actually changes its output.
+	const [now, setNow] = useState(() => Date.now())
+	useEffect(() => {
+		const id = setInterval(() => setNow(Date.now()), 1000)
+		return () => clearInterval(id)
+	}, [])
 
 	// Shared by the initial mount fetch and the socket-triggered refresh below
 	// — `silent` skips the error toast for background refreshes (a transient
@@ -79,17 +126,19 @@ function Admin() {
 	// it off.
 	const loadAdminData = async (silent = false) => {
 		try {
-			const [statsRes, usersRes, growthRes, auditRes] = await Promise.all([
+			const [statsRes, usersRes, growthRes, auditRes, notificationsRes] = await Promise.all([
 				api.get('/admin/stats'),
 				api.get('/admin/users'),
 				api.get('/admin/growth'),
 				api.get('/admin/audit-log'),
+				api.get('/admin/notifications'),
 			])
 			if (!mountedRef.current) return
 			setStats(statsRes.data)
 			setUsers(usersRes.data)
 			setGrowth(growthRes.data)
 			setAuditLog(auditRes.data)
+			setNotifications(notificationsRes.data)
 		} catch {
 			if (mountedRef.current && !silent) toast.error('Could not load admin data.')
 		} finally {
@@ -215,6 +264,16 @@ function Admin() {
 		}
 	}
 
+	const handleDeleteNotification = async (id) => {
+		try {
+			await api.delete(`/admin/notifications/${id}`)
+			setNotifications((prev) => prev.filter((n) => n._id !== id))
+			refreshAuditLog()
+		} catch (err) {
+			toast.error(err.response?.data?.message || 'Could not delete notification.')
+		}
+	}
+
 	return (
 		<div className="min-h-screen p-[18px] min-[761px]:p-7 flex flex-col gap-6 max-w-[1040px] mx-auto">
 			<div className="flex items-center gap-3">
@@ -296,7 +355,7 @@ function Admin() {
 												</td>
 												<td className="py-2.5 px-3.5 text-ink/60 capitalize">{u.authProvider}</td>
 												<td className="py-2.5 px-3.5 text-ink/60">{relativeTime(u.createdAt)}</td>
-												<td className="py-2.5 px-3.5 text-ink/60">{u.lastLoginAt ? relativeTime(u.lastLoginAt) : 'Never'}</td>
+												<td className="py-2.5 px-3.5 text-ink/60">{u.lastActiveAt || u.lastLoginAt ? activityStatus(u.lastActiveAt || u.lastLoginAt, now) : 'Never'}</td>
 												<td className="py-2.5 px-3.5 text-right tabular-nums">{u.noteCount}</td>
 												<td className="py-2.5 px-3.5 text-right tabular-nums">{u.flashcardCount}</td>
 												<td className="py-2.5 px-3.5">
@@ -342,6 +401,31 @@ function Admin() {
 					</div>
 
 					<div className="flex flex-col gap-2.5">
+						<div className="flex items-center justify-between">
+							<h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink/40">Notifications sent</h2>
+							<button
+								onClick={() => setShowSendModal(true)}
+								className="py-1.5 px-3 rounded-[7px] text-[11.5px] font-semibold bg-accent/20 text-accent cursor-pointer transition-colors hover:bg-accent/28"
+							>+ Send notification</button>
+						</div>
+						<div className="rounded-[14px] border border-ink/12 bg-ink/4 divide-y divide-ink/6">
+							{notifications.length === 0 ? (
+								<p className="text-[13px] text-ink/40 p-4">No notifications sent yet.</p>
+							) : (
+								notifications.map((n) => (
+									<NotificationRow
+										key={n._id}
+										notification={n}
+										expanded={expandedNotifId === n._id}
+										onToggleExpand={() => setExpandedNotifId((id) => (id === n._id ? null : n._id))}
+										onDelete={() => handleDeleteNotification(n._id)}
+									/>
+								))
+							)}
+						</div>
+					</div>
+
+					<div className="flex flex-col gap-2.5">
 						<h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink/40">Recent activity</h2>
 						<div className="rounded-[14px] border border-ink/12 bg-ink/4 divide-y divide-ink/6">
 							{auditLog.length === 0 ? (
@@ -372,6 +456,9 @@ function Admin() {
 
 			{notesUserId && <AdminNotesModal userId={notesUserId} onClose={() => setNotesUserId(null)} onNoteDeleted={handleNoteDeleted} />}
 			{passwordResetResult && <AdminPasswordResetModal result={passwordResetResult} onClose={() => setPasswordResetResult(null)} />}
+			{showSendModal && users && (
+				<SendNotificationModal users={users} onClose={() => setShowSendModal(false)} onSent={refreshAuditLog} />
+			)}
 		</div>
 	)
 }

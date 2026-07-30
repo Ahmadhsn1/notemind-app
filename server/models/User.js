@@ -29,6 +29,15 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  // Updated on real ongoing activity (see middleware/authMiddleware.js's
+  // `protect`, throttled to at most once/minute per user), unlike
+  // lastLoginAt above which only ever reflects the moment a session started
+  // and stays frozen for as long as that session keeps getting reused. This
+  // is what the admin dashboard's "Last active" column actually means.
+  lastActiveAt: {
+    type: Date,
+    default: null,
+  },
   // Checked at login only (password and Google), not on every request via
   // `protect` — that would mean a DB read on every single API call in the
   // app for a check that only needs to matter at the moment a new session is
