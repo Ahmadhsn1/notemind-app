@@ -1,41 +1,152 @@
 import {useState, useEffect} from 'react'
+import {useLocation, useNavigate} from 'react-router-dom'
 import api from '../api/axios'
 import {useAuth} from '../context/AuthContext'
+import {useToast} from '../context/ToastContext'
 import NoteCard from '../components/NoteCard'
 import Sidebar from '../components/Sidebar'
 import TopBar from '../components/TopBar'
 import NoteFormModal from '../components/NoteFormModal'
+import TemplatePickerModal from '../components/TemplatePickerModal'
 import AskAIModal from '../components/AskAIModal'
 import ConfirmModal from '../components/ConfirmModal'
 import NoteViewModal from '../components/NoteViewModal'
+import CommandPalette from '../components/CommandPalette'
+import FlashcardReview from '../components/FlashcardReview'
+import DigestWidget from '../components/DigestWidget'
+import MomentumHero from '../components/MomentumHero'
+import CursorSpotlight from '../components/CursorSpotlight'
+import {legacyBodyToHtml} from '../utils/legacyBodyToHtml'
+import {toLocalDateKey} from '../utils/dateKey'
+
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in the browser's local time,
+// not the ISO/UTC string the API stores — new Date(iso) already applies the
+// local timezone via its getHours()/getDate() etc, so this is just padding.
+const toDatetimeLocalValue = (isoString) => {
+	if (!isoString) return ''
+	const d = new Date(isoString)
+	const pad = (n) => String(n).padStart(2, '0')
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 function Dashboard() {
 	const [notes, setNotes] = useState([])
 	const [title, setTitle] = useState('')
-	const [body, setBody] = useState('')
+	const [contentHtml, setContentHtml] = useState('')
+	const [legacyBody, setLegacyBody] = useState('')
+	const [bodyPlainText, setBodyPlainText] = useState('')
 	const [tags, setTags] = useState('')
 	const [folder, setFolder] = useState('General')
+	const [reminderAt, setReminderAt] = useState('')
 	const [editingId, setEditingId] = useState(null)
 	const [isModalOpen, setIsModalOpen] = useState(false)
+	const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
 	const [searchQuery, setSearchQuery] = useState('')
 	const [activeFolder, setActiveFolder] = useState('All')
+	// Set by clicking a day bar in MomentumHero's "Daily activity" chart —
+	// ANDed with search/folder below, same as those two already combine.
+	// Clicking the same bar again toggles it back to null (see the
+	// onSelectDay handler passed to MomentumHero).
+	const [selectedDay, setSelectedDay] = useState(null)
 	const [sortMode, setSortMode] = useState('newest')
 	const [viewMode, setViewMode] = useState('grid')
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 	const [isAskModalOpen, setIsAskModalOpen] = useState(false)
-	const [noteToDelete, setNoteToDelete] = useState(null)
 	const [viewingNoteId, setViewingNoteId] = useState(null)
+	const [notesLoading, setNotesLoading] = useState(true)
+	const [notesError, setNotesError] = useState('')
+	const [semanticMatchIds, setSemanticMatchIds] = useState([])
+	// 'active' | 'archived' | 'trash' — which note lifecycle state the main
+	// list shows (Phase 4). Switching triggers a refetch since each is a
+	// distinct server-side filter, not a client-side split of one list.
+	const [view, setView] = useState('active')
+	const [noteToPermanentlyDelete, setNoteToPermanentlyDelete] = useState(null)
+	// updatedAt captured when editing started, plus a pending save payload —
+	// together these back the optimistic-concurrency check in handleSubmit
+	// (Phase 7): if the note changed elsewhere since editing began, the user
+	// is warned before their edit can overwrite it.
+	const [editingUpdatedAt, setEditingUpdatedAt] = useState(null)
+	const [saveConflict, setSaveConflict] = useState(null)
+	// null = closed; 'due' = global due-today queue; a note id = that note's
+	// full deck (opened right after generating from NoteViewModal).
+	const [flashcardReviewTarget, setFlashcardReviewTarget] = useState(null)
 
 	const {user, logout} = useAuth()
+	const toast = useToast()
+	const location = useLocation()
+	const navigate = useNavigate()
 
+	// GET /notes is now paginated server-side (bounded query instead of an
+	// unbounded scan). No page/next-page UI yet — this fetches the max page
+	// size, which covers the full note list for realistic personal-scale use;
+	// paging controls are a natural follow-up once someone actually has more
+	// notes than that. `view` (active/archived/trash, Phase 4) is read from
+	// closure so a refetch after any mutation always reflects whichever list
+	// is currently open.
 	const fetchNotes = async () => {
-		const response = await api.get('/notes')
-		setNotes(response.data)
+		const response = await api.get('/notes', {params: {limit: 200, view}})
+		setNotes(response.data.notes)
 	}
 
+	// Drives the loading/error UI (unlike the silent `fetchNotes` refetch used
+	// after mutations). Shared by the mount/view-change effect and the Retry
+	// button.
+	const loadNotesWithStatus = async () => {
+		setNotesLoading(true)
+		setNotesError('')
+		try {
+			await fetchNotes()
+		} catch {
+			setNotesError('Could not load your notes.')
+		} finally {
+			setNotesLoading(false)
+		}
+	}
+
+	// This project has no data-fetching library (React Query/SWR) — fetch-on-
+	// mount-and-view-change + manual refetch-after-mutation is the established
+	// pattern here.
+	/* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect -- loadNotesWithStatus is re-created each render by design; view is the only real trigger */
 	useEffect(() => {
-		fetchNotes()
-	}, [])
+		loadNotesWithStatus()
+	}, [view])
+	/* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
+
+	// GraphView navigates here with { openNoteId } in route state after a
+	// node click. Runs once notes are loaded (so the target is resolvable),
+	// then clears the state so back/forward navigation or a later re-render
+	// doesn't reopen it.
+	/* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect -- syncing to react-router's external navigation state, not derived local state; only re-run when loading finishes or the target id changes */
+	useEffect(() => {
+		if (notesLoading || !location.state?.openNoteId) return
+		setViewingNoteId(location.state.openNoteId)
+		navigate(location.pathname, {replace: true, state: {}})
+	}, [notesLoading, location.state?.openNoteId])
+	/* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
+
+	// Semantic search augmentation (Phase 3): the substring filter below stays
+	// instant/unchanged; this debounced call adds notes that are relevant by
+	// meaning even when they share no keywords with the query (e.g. searching
+	// "trip to portugal" surfaces a note about "flying to Lisbon"). Silent on
+	// failure — keyword search still works without it.
+	/* eslint-disable react-hooks/set-state-in-effect -- debounced fetch driven by external input (search query), not derivable from render */
+	useEffect(() => {
+		if (searchQuery.trim().length < 3) {
+			setSemanticMatchIds([])
+			return
+		}
+		let ignore = false
+		const timer = setTimeout(async () => {
+			try {
+				const response = await api.post('/notes/search', {query: searchQuery.trim()})
+				if (!ignore) setSemanticMatchIds(response.data.noteIds)
+			} catch {
+				if (!ignore) setSemanticMatchIds([])
+			}
+		}, 400)
+		return () => { ignore = true; clearTimeout(timer) }
+	}, [searchQuery])
+	/* eslint-enable react-hooks/set-state-in-effect */
 
 	const folderNames = [...new Set(notes.map((note) => note.folder))]
 	const existingFolders = folderNames.length > 0 ? folderNames : ['General']
@@ -46,10 +157,13 @@ function Dashboard() {
 
 	const filteredNotes = notes.filter((note) => {
 		const matchesSearch =
+			searchQuery.trim() === '' ||
 			note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			note.body.toLowerCase().includes(searchQuery.toLowerCase())
+			note.body.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			semanticMatchIds.includes(note._id)
 		const matchesFolder = activeFolder === 'All' || note.folder === activeFolder
-		return matchesSearch && matchesFolder
+		const matchesDay = !selectedDay || toLocalDateKey(note.createdAt) === selectedDay
+		return matchesSearch && matchesFolder && matchesDay
 	})
 
 	const sortedNotes = [...filteredNotes].sort((a, b) => {
@@ -58,35 +172,110 @@ function Dashboard() {
 		return a.title.localeCompare(b.title)
 	})
 
+	// Pinned section is only meaningful in the active view — archived/trashed
+	// notes are never pinned (server clears the flag on archive/delete).
+	const pinnedNotes = view === 'active' ? sortedNotes.filter((n) => n.pinned) : []
+	const unpinnedNotes = view === 'active' ? sortedNotes.filter((n) => !n.pinned) : sortedNotes
+
 	const viewingIndex = viewingNoteId ? sortedNotes.findIndex((n) => n._id === viewingNoteId) : -1
-	const viewingNote = viewingIndex >= 0 ? sortedNotes[viewingIndex] : null
+	// Wikilink/backlink navigation (Phase 2) can target a note outside the
+	// current folder/search filter, where it won't be in sortedNotes — fall
+	// back to the full list so the modal still opens (prev/next just won't
+	// have a meaningful position for it, same as viewing any single result).
+	const viewingNote = viewingIndex >= 0
+		? sortedNotes[viewingIndex]
+		: (viewingNoteId ? notes.find((n) => n._id === viewingNoteId) : null)
 
 	const resetForm = () => {
 		setTitle('')
-		setBody('')
+		setContentHtml('')
+		setLegacyBody('')
+		setBodyPlainText('')
 		setTags('')
 		setFolder(existingFolders[0])
+		setReminderAt('')
 	}
 
 	const handleOpenNew = () => {
 		setEditingId(null)
 		resetForm()
+		setIsTemplatePickerOpen(true)
+	}
+
+	const handleCloseTemplatePicker = () => setIsTemplatePickerOpen(false)
+
+	const handleSelectTemplate = (template) => {
+		setIsTemplatePickerOpen(false)
+		setTitle(template.title)
+		setContentHtml(template.contentHtml)
+		setLegacyBody('')
+		// Templates are fixed, trusted HTML (not user/AI input) — textContent
+		// extraction just needs to mirror what NoteEditor's own getText() will
+		// produce once the user starts typing, so the "Generate title" button's
+		// bodyPlainText.trim() gate reflects the prefilled content immediately.
+		const plainText = new DOMParser().parseFromString(template.contentHtml, 'text/html').body.textContent || ''
+		setBodyPlainText(plainText)
 		setIsModalOpen(true)
 	}
+
+	const handleOpenFlashcardsForNote = (noteId) => {
+		setViewingNoteId(null)
+		setFlashcardReviewTarget(noteId)
+	}
+
+	const handleOpenDueFlashcards = () => setFlashcardReviewTarget('due')
+	const handleCloseFlashcards = () => setFlashcardReviewTarget(null)
 
 	const handleEdit = (note) => {
 		setEditingId(note._id)
 		setTitle(note.title)
-		setBody(note.body)
+		// contentHtml state is what actually gets sent on save (see handleSubmit)
+		// — NoteEditor's own legacyBody fallback only affects what's *displayed*
+		// on mount, it never reports back to this state unless the user types.
+		// Leaving this as note.contentHtml || '' meant saving a legacy
+		// (body-only, no contentHtml) note without ever touching the editor —
+		// e.g. just changing tags, folder, or (once reminders shipped) the
+		// reminder — silently wiped its content, since the server applies
+		// whatever contentHtml key is present, empty string included.
+		setContentHtml(note.contentHtml || legacyBodyToHtml(note.body))
+		setLegacyBody(note.contentHtml ? '' : note.body)
+		setBodyPlainText(note.body)
 		setTags(note.tags.join(', '))
 		setFolder(note.folder)
+		setReminderAt(toDatetimeLocalValue(note.reminderAt))
+		setEditingUpdatedAt(note.updatedAt)
 		setIsModalOpen(true)
+	}
+
+	const handleContentChange = ({html, text}) => {
+		setContentHtml(html)
+		setBodyPlainText(text)
 	}
 
 	const handleCloseModal = () => {
 		setIsModalOpen(false)
 		setEditingId(null)
+		setEditingUpdatedAt(null)
 		resetForm()
+	}
+
+	const saveNote = async (noteData) => {
+		try {
+			if (editingId) {
+				await api.put(`/notes/${editingId}`, noteData)
+			} else {
+				await api.post('/notes', noteData)
+			}
+
+			setIsModalOpen(false)
+			setEditingId(null)
+			setEditingUpdatedAt(null)
+			resetForm()
+			await fetchNotes()
+			toast.success(editingId ? 'Note saved.' : 'Note created.')
+		} catch {
+			toast.error('Could not save the note. Try again.')
+		}
 	}
 
 	const handleSubmit = async (e) => {
@@ -94,21 +283,36 @@ function Dashboard() {
 
 		const noteData = {
 			title,
-			body,
+			contentHtml,
 			tags: tags.split(',').map((tag) => tag.trim()).filter((tag) => tag !== ''),
 			folder: folder.trim() || 'General',
+			reminderAt: reminderAt ? new Date(reminderAt).toISOString() : null,
 		}
 
-		if (editingId) {
-			await api.put(`/notes/${editingId}`, noteData)
-		} else {
-			await api.post('/notes', noteData)
+		// Optimistic-concurrency check (Phase 7): re-fetch the note's current
+		// updatedAt right before saving and compare it to the value captured
+		// when editing began. A mismatch means it changed elsewhere (another
+		// tab, another device) since — warn before silently overwriting that.
+		if (editingId && editingUpdatedAt) {
+			try {
+				const latest = await api.get(`/notes/${editingId}`)
+				if (latest.data.updatedAt !== editingUpdatedAt) {
+					setSaveConflict(noteData)
+					return
+				}
+			} catch {
+				// Freshness check itself failed (e.g. offline) — fall through and
+				// let the save attempt itself surface the real error.
+			}
 		}
 
-		setIsModalOpen(false)
-		setEditingId(null)
-		resetForm()
-		fetchNotes()
+		await saveNote(noteData)
+	}
+
+	const handleConfirmOverwrite = async () => {
+		const noteData = saveConflict
+		setSaveConflict(null)
+		if (noteData) await saveNote(noteData)
 	}
 
 	const handleViewNote = (note) => {
@@ -130,19 +334,71 @@ function Dashboard() {
 		setViewingNoteId(sortedNotes[nextIndex]._id)
 	}
 
-	const handleRequestDelete = (note) => {
-		setNoteToDelete(note)
+	// Soft delete now — reversible via Trash, so no confirm-before-trash
+	// friction. ConfirmModal is reserved for the one truly irreversible
+	// action: permanent delete from Trash (see below).
+	const handleDelete = async (note) => {
+		try {
+			await api.delete(`/notes/${note._id}`)
+			await fetchNotes()
+			toast.success('Moved to trash.')
+		} catch {
+			toast.error('Could not delete the note. Try again.')
+		}
 	}
 
-	const handleCancelDelete = () => {
-		setNoteToDelete(null)
+	const handleRequestPermanentDelete = (note) => setNoteToPermanentlyDelete(note)
+	const handleCancelPermanentDelete = () => setNoteToPermanentlyDelete(null)
+
+	const handleConfirmPermanentDelete = async () => {
+		if (!noteToPermanentlyDelete) return
+		try {
+			await api.delete(`/notes/${noteToPermanentlyDelete._id}/permanent`)
+			setNoteToPermanentlyDelete(null)
+			await fetchNotes()
+			toast.success('Note permanently deleted.')
+		} catch {
+			toast.error('Could not delete the note. Try again.')
+		}
 	}
 
-	const handleConfirmDelete = async () => {
-		if (!noteToDelete) return
-		await api.delete(`/notes/${noteToDelete._id}`)
-		setNoteToDelete(null)
-		fetchNotes()
+	const handleRestore = async (note) => {
+		try {
+			await api.post(`/notes/${note._id}/restore`)
+			await fetchNotes()
+			toast.success('Note restored.')
+		} catch {
+			toast.error('Could not restore the note. Try again.')
+		}
+	}
+
+	const handleTogglePin = async (note) => {
+		try {
+			const response = await api.patch(`/notes/${note._id}/pin`)
+			setNotes((prev) => prev.map((n) => (n._id === note._id ? response.data : n)))
+		} catch {
+			toast.error('Could not update pin. Try again.')
+		}
+	}
+
+	const handleArchive = async (note) => {
+		try {
+			await api.patch(`/notes/${note._id}/archive`)
+			await fetchNotes()
+			toast.success('Note archived.')
+		} catch {
+			toast.error('Could not archive the note. Try again.')
+		}
+	}
+
+	const handleUnarchive = async (note) => {
+		try {
+			await api.patch(`/notes/${note._id}/unarchive`)
+			await fetchNotes()
+			toast.success('Note restored from archive.')
+		} catch {
+			toast.error('Could not unarchive the note. Try again.')
+		}
 	}
 
 	const handleSummarize = async (id) => {
@@ -152,16 +408,21 @@ function Dashboard() {
 
 	return (
 		<div className="flex h-screen">
+			<CursorSpotlight />
 			<Sidebar
 				folders={folders}
 				activeFolder={activeFolder}
 				onSelectFolder={setActiveFolder}
 				onNewNote={handleOpenNew}
 				onAskAI={() => setIsAskModalOpen(true)}
+				onOpenFlashcards={handleOpenDueFlashcards}
 				userName={user?.name}
+				isAdmin={user?.role === 'admin'}
 				onLogout={logout}
 				isOpen={isSidebarOpen}
 				onClose={() => setIsSidebarOpen(false)}
+				view={view}
+				onViewChange={setView}
 			/>
 
 			<main className="flex-1 min-w-0 h-screen overflow-y-auto p-[18px] min-[761px]:pt-6 min-[761px]:px-7 min-[761px]:pb-7 2xl:px-12">
@@ -175,39 +436,155 @@ function Dashboard() {
 					onOpenSidebar={() => setIsSidebarOpen(true)}
 				/>
 
-				{sortedNotes.length === 0 ? (
-					<div className="text-center text-white/50 py-[70px] px-5">
-						<h4 className="text-[15px] font-semibold text-white/70 mb-1.5">No notes match</h4>
-						<p className="text-[13px]">Try a different folder or search term, or create your first note.</p>
+				{selectedDay && (
+					<div className="flex items-center gap-1.5 mb-4 -mt-2">
+						<span className="inline-flex items-center gap-1.5 bg-accent/30 text-accent text-[11px] font-medium py-[3px] pl-2.5 pr-1.5 rounded-full">
+							{new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
+							<button
+								type="button"
+								onClick={() => setSelectedDay(null)}
+								aria-label="Clear day filter"
+								className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-accent/25 cursor-pointer"
+							>×</button>
+						</span>
+					</div>
+				)}
+
+				{view === 'active' && !notesLoading && !notesError && (
+					<MomentumHero
+						notes={notes}
+						selectedDay={selectedDay}
+						onSelectDay={(day) => setSelectedDay((prev) => (prev === day ? null : day))}
+					/>
+				)}
+
+				{view === 'active' && <DigestWidget onViewNote={handleViewNote} />}
+
+				{notesLoading ? (
+					<div className={`grid gap-4 ${viewMode === 'list' ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(268px,1fr))]'}`}>
+						{[...Array(6)].map((_, i) => (
+							<div key={i} className="h-[132px] rounded-[14px] bg-ink/5 border border-ink/8 animate-pulse" />
+						))}
+					</div>
+				) : notesError ? (
+					<div className="text-center text-ink/50 py-[70px] px-5">
+						<h4 className="text-[15px] font-semibold text-danger-light mb-1.5">{notesError}</h4>
+						<p className="text-[13px] mb-4">Check your connection and try again.</p>
+						<button onClick={loadNotesWithStatus} className="btn-primary py-[9px] px-5 text-[13px]">Retry</button>
+					</div>
+				) : sortedNotes.length === 0 ? (
+					<div className="text-center text-ink/50 py-[70px] px-5">
+						<h4 className="text-[15px] font-semibold text-ink/70 mb-1.5">
+							{view === 'trash' ? 'Trash is empty' : view === 'archived' ? 'No archived notes' : 'No notes match'}
+						</h4>
+						<p className="text-[13px]">
+							{view === 'active'
+								? 'Try a different folder or search term, or create your first note.'
+								: 'Try a different folder or search term.'}
+						</p>
 					</div>
 				) : (
-					<div className={`grid gap-4 ${viewMode === 'list' ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(268px,1fr))]'}`}>
-						{sortedNotes.map((note) => (
-							<NoteCard
-								key={note._id}
-								note={note}
-								onDelete={handleRequestDelete}
-								onEdit={handleEdit}
-								onSummarize={handleSummarize}
-								onView={handleViewNote}
-							/>
-						))}
+					<div className="flex flex-col gap-6">
+						{pinnedNotes.length > 0 && (
+							<div className="flex flex-col gap-3">
+								<div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.06em] text-ink/40">
+									<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 5.6L19 9.4l-5.2 1.9L12 17l-1.8-5.7L5 9.4l5.2-1.8L12 2Z" /></svg>
+									Pinned
+								</div>
+								<div className={`grid gap-4 ${viewMode === 'list' ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(268px,1fr))]'}`}>
+									{pinnedNotes.map((note) => (
+										<NoteCard
+											key={note._id}
+											note={note}
+											view={view}
+											onDelete={handleDelete}
+											onEdit={handleEdit}
+											onSummarize={handleSummarize}
+											onView={handleViewNote}
+											onTogglePin={handleTogglePin}
+											onArchive={handleArchive}
+											onUnarchive={handleUnarchive}
+											onRestore={handleRestore}
+											onPermanentDelete={handleRequestPermanentDelete}
+										/>
+									))}
+								</div>
+							</div>
+						)}
+
+						<div className={`grid gap-4 ${viewMode === 'list' ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(268px,1fr))]'}`}>
+							{unpinnedNotes.map((note) => {
+								const q = searchQuery.trim().toLowerCase()
+								const matchedBySemanticSearch = q !== ''
+									&& !note.title.toLowerCase().includes(q)
+									&& !note.body.toLowerCase().includes(q)
+									&& semanticMatchIds.includes(note._id)
+								return (
+									<NoteCard
+										key={note._id}
+										note={note}
+										view={view}
+										onDelete={handleDelete}
+										onEdit={handleEdit}
+										onSummarize={handleSummarize}
+										onView={handleViewNote}
+										onTogglePin={handleTogglePin}
+										onArchive={handleArchive}
+										onUnarchive={handleUnarchive}
+										onRestore={handleRestore}
+										onPermanentDelete={handleRequestPermanentDelete}
+										matchedBySemanticSearch={matchedBySemanticSearch}
+									/>
+								)
+							})}
+						</div>
 					</div>
 				)}
 			</main>
+
+			<CommandPalette
+				notes={notes}
+				folders={folders}
+				onNewNote={handleOpenNew}
+				onAskAI={() => setIsAskModalOpen(true)}
+				onSelectFolder={setActiveFolder}
+				onViewNote={handleViewNote}
+				onLogout={logout}
+				otherModalOpen={
+					isModalOpen ||
+					isTemplatePickerOpen ||
+					isAskModalOpen ||
+					!!viewingNoteId ||
+					!!flashcardReviewTarget ||
+					!!noteToPermanentlyDelete ||
+					!!saveConflict
+				}
+			/>
+
+			<TemplatePickerModal
+				isOpen={isTemplatePickerOpen}
+				onSelect={handleSelectTemplate}
+				onClose={handleCloseTemplatePicker}
+			/>
 
 			<NoteFormModal
 				isOpen={isModalOpen}
 				isEditing={!!editingId}
 				title={title}
-				body={body}
+				contentHtml={contentHtml}
+				legacyBody={legacyBody}
+				bodyPlainText={bodyPlainText}
 				tags={tags}
 				folder={folder}
+				reminderAt={reminderAt}
 				existingFolders={existingFolders}
+				notes={notes}
+				editingId={editingId}
 				onTitleChange={setTitle}
-				onBodyChange={setBody}
+				onContentChange={handleContentChange}
 				onTagsChange={setTags}
 				onFolderChange={setFolder}
+				onReminderChange={setReminderAt}
 				onSubmit={handleSubmit}
 				onClose={handleCloseModal}
 			/>
@@ -215,26 +592,47 @@ function Dashboard() {
 			<AskAIModal
 				isOpen={isAskModalOpen}
 				onClose={() => setIsAskModalOpen(false)}
+				notes={notes}
+				onActionApplied={fetchNotes}
 			/>
 
 			<NoteViewModal
 				isOpen={!!viewingNoteId}
 				note={viewingNote}
+				notes={notes}
 				onClose={handleCloseView}
 				onEdit={handleEditFromView}
 				onPrev={() => handleNavigateView(-1)}
 				onNext={() => handleNavigateView(1)}
+				onNavigateToNote={handleViewNote}
+				onNoteChanged={fetchNotes}
+				onOpenFlashcards={handleOpenFlashcardsForNote}
 				currentIndex={viewingIndex}
 				totalCount={sortedNotes.length}
 			/>
 
+			<FlashcardReview
+				isOpen={!!flashcardReviewTarget}
+				noteId={flashcardReviewTarget === 'due' ? null : flashcardReviewTarget}
+				onClose={handleCloseFlashcards}
+			/>
+
 			<ConfirmModal
-				isOpen={!!noteToDelete}
-				title="Delete note?"
-				message={noteToDelete ? `"${noteToDelete.title}" will be permanently deleted. This can't be undone.` : ''}
-				confirmLabel="Delete"
-				onConfirm={handleConfirmDelete}
-				onCancel={handleCancelDelete}
+				isOpen={!!noteToPermanentlyDelete}
+				title="Delete forever?"
+				message={noteToPermanentlyDelete ? `"${noteToPermanentlyDelete.title}" will be permanently deleted. This can't be undone.` : ''}
+				confirmLabel="Delete forever"
+				onConfirm={handleConfirmPermanentDelete}
+				onCancel={handleCancelPermanentDelete}
+			/>
+
+			<ConfirmModal
+				isOpen={!!saveConflict}
+				title="This note changed elsewhere"
+				message="It looks like this note was updated somewhere else since you started editing. Saving now will overwrite those changes."
+				confirmLabel="Overwrite"
+				onConfirm={handleConfirmOverwrite}
+				onCancel={() => setSaveConflict(null)}
 			/>
 		</div>
 	)

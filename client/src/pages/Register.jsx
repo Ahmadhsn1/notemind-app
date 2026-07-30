@@ -3,6 +3,8 @@ import {useNavigate, Link} from 'react-router-dom'
 import api from '../api/axios'
 import {useAuth} from '../context/AuthContext'
 import Watchers from '../components/Watchers'
+import Logo from '../components/Logo'
+import GoogleAuthButton from '../components/GoogleAuthButton'
 
 function Register() {
 	const [name, setName] = useState('')
@@ -96,9 +98,9 @@ function Register() {
 		<div className="flex justify-center items-center min-h-screen p-5 overflow-x-hidden">
 			<div className="flex flex-col items-center justify-center gap-8 w-full max-w-[1100px] min-[800px]:flex-row min-[800px]:gap-[110px]">
 				<Watchers mode={watcherMode} bounceKey={bounceKey} />
-				<div className="w-full max-w-[520px] rounded-[20px] border border-white/15 bg-white/7 backdrop-blur-[18px] py-8 px-6 min-[481px]:py-14 min-[481px]:px-[52px]">
-					<div className="text-center text-[34px] font-bold bg-gradient-to-r from-[#a29bfe] to-[#e84393] bg-clip-text text-transparent mb-1.5">NoteMind</div>
-					<p className="text-center text-[15px] text-white/55 mb-[34px]">Create your account</p>
+				<div className="w-full max-w-[520px] rounded-[20px] border border-ink/15 bg-ink/7 backdrop-blur-[18px] py-8 px-6 min-[481px]:py-14 min-[481px]:px-[52px]">
+					<Logo size={34} textSize="text-[34px]" className="justify-center mb-1.5" />
+					<p className="text-center text-[15px] text-ink/55 mb-[34px]">Create your account</p>
 					<form onSubmit={handleSubmit} ref={formRef} className="flex flex-col gap-[18px]">
 						<input
 							type="text"
@@ -107,7 +109,7 @@ function Register() {
 							onChange={(e) => setName(e.target.value)}
 							onFocus={() => setFocusedField('name')}
 							onBlur={() => setFocusedField(null)}
-							className="border border-white/12 rounded-[10px] outline-none bg-white/8 text-white placeholder-white/40 transition-colors duration-200 focus:border-[#a29bfe] focus:bg-white/12 py-[15px] px-4 text-[15px]"
+							className="border border-ink/12 rounded-[10px] outline-none bg-ink/8 text-ink placeholder-ink/40 transition-colors duration-200 focus:border-accent focus:bg-ink/12 py-[15px] px-4 text-[15px]"
 						/>
 						<input
 							type="email"
@@ -116,7 +118,7 @@ function Register() {
 							onChange={(e) => setEmail(e.target.value)}
 							onFocus={() => setFocusedField('email')}
 							onBlur={() => setFocusedField(null)}
-							className="border border-white/12 rounded-[10px] outline-none bg-white/8 text-white placeholder-white/40 transition-colors duration-200 focus:border-[#a29bfe] focus:bg-white/12 py-[15px] px-4 text-[15px]"
+							className="border border-ink/12 rounded-[10px] outline-none bg-ink/8 text-ink placeholder-ink/40 transition-colors duration-200 focus:border-accent focus:bg-ink/12 py-[15px] px-4 text-[15px]"
 						/>
 						<div className="relative flex items-center">
 							<input
@@ -126,21 +128,22 @@ function Register() {
 								onChange={(e) => setPassword(e.target.value)}
 								onFocus={() => setFocusedField('password')}
 								onBlur={() => setFocusedField(null)}
-								className="w-full border border-white/12 rounded-[10px] outline-none bg-white/8 text-white placeholder-white/40 transition-colors duration-200 focus:border-[#a29bfe] focus:bg-white/12 py-[15px] pl-4 pr-16 text-[15px]"
+								className="w-full border border-ink/12 rounded-[10px] outline-none bg-ink/8 text-ink placeholder-ink/40 transition-colors duration-200 focus:border-accent focus:bg-ink/12 py-[15px] pl-4 pr-16 text-[15px]"
 							/>
 							<button
 								type="button"
 								onClick={handleTogglePassword}
-								className="absolute right-2 bg-transparent border-none text-[#a29bfe] font-semibold p-[15px] text-base mt-1.5 cursor-pointer transition-[opacity,transform] duration-200 hover:opacity-80 active:scale-[0.98]"
+								className="absolute right-2 bg-transparent border-none text-accent font-semibold p-[15px] text-base mt-1.5 cursor-pointer transition-[opacity,transform] duration-200 hover:opacity-80 active:scale-[0.98]"
 							>
 								{showPassword ? 'Hide' : 'Show'}
 							</button>
 						</div>
-						{error && <p className="text-[#ff7675] text-sm text-center">{error}</p>}
+						{error && <p className="text-danger-light text-sm text-center">{error}</p>}
 						<button type="submit" className="btn-primary p-[15px] text-base mt-1.5">Register</button>
 					</form>
-					<p className="text-center mt-[18px] text-sm text-white/50">
-						Already have an account? <Link to="/login" className="text-[#a29bfe] no-underline font-semibold">Login</Link>
+					<GoogleAuthButton />
+					<p className="text-center mt-[18px] text-sm text-ink/50">
+						Already have an account? <Link to="/login" className="text-accent no-underline font-semibold">Login</Link>
 					</p>
 				</div>
 			</div>

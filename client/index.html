@@ -3,10 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0a0b10" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>client</title>
+    <meta name="description" content="Your thoughts, organized and alive — AI-powered note taking." />
+    <title>NoteMind</title>
+    <script>
+      // Applies the saved/system theme to <html> before first paint, so
+      // React mounting (and ThemeContext syncing its own state to this same
+      // value) never causes a visible flash of the wrong theme.
+      (function () {
+        var saved = localStorage.getItem('theme');
+        var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
   </head>
-  <body class="min-h-screen bg-gradient-to-br from-[#0f0c29] via-[#1a1443] to-[#24243e] text-white font-sans leading-relaxed antialiased">
+  <body class="min-h-screen bg-gradient-to-br from-ink-deep via-ink-mid to-ink-edge text-ink font-sans leading-relaxed antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

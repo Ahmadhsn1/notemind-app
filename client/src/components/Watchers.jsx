@@ -97,13 +97,14 @@ function Eyes({ pupil, blinking, blush, size = 16, gap = 8 }) {
             justifyContent: 'center',
             transition: 'height 0.08s ease-in-out',
             overflow: 'hidden',
+            boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.15)',
           }}
         >
           <div
             style={{
               width: pupilSize,
               height: pupilSize,
-              background: '#1a1443',
+              background: '#14161c',
               borderRadius: '50%',
               transform: `translate(${pupil.x}px, ${pupil.y}px)`,
               transition: 'transform 0.15s ease-out',
@@ -123,6 +124,11 @@ function getCharClasses(mode, bounceKey) {
   return classes.join(' ');
 }
 
+// Shared drop-shadow (filter, not box-shadow) so it hugs each character's
+// actual silhouette — including the ones clipped to a non-rectangular shape
+// (Bookmark's ribbon notch), where a box-shadow would just draw a rectangle.
+const CHAR_SHADOW = 'drop-shadow-[0_10px_22px_rgba(0,0,0,0.35)]';
+
 function Pencil({ mode, mousePos, bounceKey }) {
   const ref = useRef(null);
   const { pupil, tilt } = useEyes(mode, mousePos, ref);
@@ -130,16 +136,43 @@ function Pencil({ mode, mousePos, bounceKey }) {
   return (
     <div
       ref={ref}
-      className={`${getCharClasses(mode, bounceKey)} flex flex-col items-center mr-[-4px] z-[2]`}
+      className={`${getCharClasses(mode, bounceKey)} ${CHAR_SHADOW} flex flex-col items-center mr-[-4px] z-[2]`}
       style={{ '--tilt': `${tilt - 4}deg` }}
       key={`pencil-${bounceKey}`}
     >
-      <div className="w-[34px] h-[26px] bg-[#fd79a8] rounded-t-[8px]" />
-      <div className="w-[34px] h-2 bg-[#b2bec3]" />
-      <div className="w-[34px] h-[150px] bg-[#fdcb6e] relative">
+      {/* eraser */}
+      <div
+        className="w-9 h-7 rounded-t-[10px] relative overflow-hidden"
+        style={{ background: 'linear-gradient(160deg, #ffb3cd 0%, #fd79a8 60%, #f4568e 100%)' }}
+      >
+        <div className="absolute top-1 left-1.5 right-4 h-1.5 rounded-full bg-white/45" />
+      </div>
+      {/* ferrule */}
+      <div
+        className="w-9 h-2.5 relative"
+        style={{ background: 'linear-gradient(180deg, #eef2f3 0%, #c2ccd0 45%, #96a3a8 100%)' }}
+      >
+        <div className="absolute inset-x-0 top-[3px] h-px bg-black/20" />
+        <div className="absolute inset-x-0 bottom-[3px] h-px bg-black/20" />
+      </div>
+      {/* body */}
+      <div
+        className="w-9 h-[142px] relative"
+        style={{ background: 'linear-gradient(90deg, color-mix(in srgb, var(--color-amber) 65%, black) 0%, var(--color-amber) 42%, color-mix(in srgb, var(--color-amber) 78%, white) 62%, color-mix(in srgb, var(--color-amber) 65%, black) 100%)' }}
+      >
         <div className="absolute top-[18px] left-0 right-0"><Eyes pupil={pupil} blinking={blinking} blush={mode === 'shy'} size={12} gap={5} /></div>
       </div>
-      <div className="w-0 h-0 border-l-[17px] border-l-transparent border-r-[17px] border-r-transparent border-t-[26px] border-t-[#e8b665]" />
+      {/* wood tip + graphite point */}
+      <div className="relative">
+        <div
+          className="w-0 h-0 border-l-[18px] border-l-transparent border-r-[18px] border-r-transparent border-t-[22px]"
+          style={{ borderTopColor: '#f0c894' }}
+        />
+        <div
+          className="absolute left-1/2 -translate-x-1/2 top-[14px] w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[9px]"
+          style={{ borderTopColor: '#3a3632' }}
+        />
+      </div>
     </div>
   );
 }
@@ -151,16 +184,30 @@ function Notebook({ mode, mousePos, bounceKey }) {
   return (
     <div
       ref={ref}
-      className={`${getCharClasses(mode, bounceKey)} [animation-delay:-1s] w-[110px] h-[140px] bg-[#6c5ce7] rounded-[10px] mr-[-8px] z-[3] shadow-[0_8px_30px_rgba(0,0,0,0.3)]`}
-      style={{ '--tilt': `${tilt + 3}deg` }}
+      className={`${getCharClasses(mode, bounceKey)} ${CHAR_SHADOW} [animation-delay:-1s] w-[112px] h-[142px] rounded-[16px] mr-[-8px] z-[3] relative overflow-hidden`}
+      style={{ '--tilt': `${tilt + 3}deg`, background: 'linear-gradient(155deg, var(--color-accent) 0%, var(--color-accent-2) 100%)' }}
       key={`notebook-${bounceKey}`}
     >
-      <div className="absolute left-2 top-2.5 bottom-2.5 flex flex-col justify-between">
-        {[0, 1, 2, 3].map((i) => <div key={i} className="w-2 h-2 border-2 border-white/60 rounded-full" />)}
+      {/* soft sheen, top-left */}
+      <div className="absolute -top-4 -left-4 w-16 h-16 rounded-full bg-white/15 blur-md" />
+      {/* corner ribbon bookmark */}
+      <div
+        className="absolute -top-1 right-4 w-3 h-6"
+        style={{ background: '#ffce54', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%)' }}
+      />
+      {/* spiral binding */}
+      <div className="absolute left-2.5 top-3 bottom-3 flex flex-col justify-between">
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="w-2.5 h-2.5 rounded-full"
+            style={{ background: 'linear-gradient(160deg, #ffffff, rgba(255,255,255,0.4))', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.35)' }}
+          />
+        ))}
       </div>
-      <div className="absolute top-6 left-[34px] right-2"><Eyes pupil={pupil} blinking={blinking} blush={mode === 'shy'} size={16} gap={8} /></div>
-      <div className="absolute h-[3px] bg-white/30 rounded-[2px] bottom-[34px] left-[38px] right-6" />
-      <div className="absolute h-[3px] bg-white/30 rounded-[2px] bottom-[22px] left-[38px] right-4" />
+      <div className="absolute top-6 left-9 right-2.5"><Eyes pupil={pupil} blinking={blinking} blush={mode === 'shy'} size={16} gap={8} /></div>
+      <div className="absolute h-[3px] rounded-[2px] bg-white/30 bottom-9 left-10 right-6" />
+      <div className="absolute h-[3px] rounded-[2px] bg-white/30 bottom-6 left-10 right-4" />
     </div>
   );
 }
@@ -172,13 +219,20 @@ function Bookmark({ mode, mousePos, bounceKey }) {
   return (
     <div
       ref={ref}
-      className={`${getCharClasses(mode, bounceKey)} [animation-delay:-2s] mr-[-6px] z-[2] drop-shadow-[0_8px_20px_rgba(0,0,0,0.3)]`}
+      className={`${getCharClasses(mode, bounceKey)} ${CHAR_SHADOW} [animation-delay:-2s] mr-[-6px] z-[2]`}
       style={{ '--tilt': `${tilt - 3}deg` }}
       key={`bookmark-${bounceKey}`}
     >
-      <div className="w-16 h-[130px] bg-[#e84393] rounded-t-[8px] relative [clip-path:polygon(0_0,100%_0,100%_100%,50%_82%,0_100%)]">
-        <div className="absolute top-[14px] left-1/2 -translate-x-1/2 w-3 h-3 border-[3px] border-white/50 rounded-full" />
-        <div className="absolute top-[42px] left-0 right-0"><Eyes pupil={pupil} blinking={blinking} blush={mode === 'shy'} size={14} gap={7} /></div>
+      <div
+        className="w-16 h-[132px] relative"
+        style={{
+          background: 'linear-gradient(160deg, #6ff0cf 0%, var(--color-growth) 55%, color-mix(in srgb, var(--color-growth) 75%, black) 100%)',
+          clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)',
+        }}
+      >
+        <div className="absolute inset-y-0 left-1/2 w-px bg-black/10" />
+        <div className="absolute top-3.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full" style={{ boxShadow: 'inset 0 0 0 3px rgba(255,255,255,0.6)' }} />
+        <div className="absolute top-11 left-0 right-0"><Eyes pupil={pupil} blinking={blinking} blush={mode === 'shy'} size={14} gap={7} /></div>
       </div>
     </div>
   );
@@ -191,13 +245,23 @@ function Folder({ mode, mousePos, bounceKey }) {
   return (
     <div
       ref={ref}
-      className={`${getCharClasses(mode, bounceKey)} [animation-delay:-0.5s] z-[1]`}
+      className={`${getCharClasses(mode, bounceKey)} [animation-delay:-0.5s] z-[1] relative`}
       style={{ '--tilt': `${tilt + 4}deg` }}
       key={`folder-${bounceKey}`}
     >
-      <div className="w-[46px] h-4 bg-[#00b5b0] rounded-t-[8px] ml-1.5" />
-      <div className="w-32 h-24 bg-[#00cec9] rounded-[4px_10px_10px_10px] relative shadow-[0_8px_30px_rgba(0,0,0,0.3)]">
+      {/* paper peeking out from behind the tab */}
+      <div className="absolute -top-2 left-4 right-4 h-6 rounded-t-[6px] bg-white/85" />
+      <div
+        className="w-12 h-4 rounded-t-[8px] ml-1.5 relative"
+        style={{ background: 'linear-gradient(160deg, #b39cff, #8a6ef0)' }}
+      />
+      <div
+        className={`w-32 h-24 rounded-[4px_14px_14px_14px] relative overflow-hidden ${CHAR_SHADOW}`}
+        style={{ background: 'linear-gradient(155deg, #c3b0ff 0%, #9a7bff 55%, color-mix(in srgb, #9a7bff 75%, black) 100%)' }}
+      >
+        <div className="absolute top-0 inset-x-0 h-px bg-white/25" />
         <div className="absolute top-[22px] left-0 right-0"><Eyes pupil={pupil} blinking={blinking} blush={mode === 'shy'} size={16} gap={9} /></div>
+        <div className="absolute -bottom-6 -right-6 w-20 h-20 rounded-full bg-black/10 blur-md" />
       </div>
     </div>
   );
@@ -228,7 +292,7 @@ function Watchers({ mode, bounceKey }) {
   return (
     <div className="flex items-end gap-[10px] relative scale-75 min-[500px]:scale-90 min-[800px]:scale-100 ml-0 min-[800px]:ml-[-40px]">
       {mode === 'remind' && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-[14px] bg-white text-[#1a1443] text-[13px] font-semibold whitespace-nowrap py-2 px-3.5 rounded-[14px] shadow-[0_6px_20px_rgba(0,0,0,0.25)] z-[3] animate-bubble-pop after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[7px] after:border-transparent after:border-t-white">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-[14px] bg-white text-[#14161c] text-[13px] font-semibold whitespace-nowrap py-2 px-3.5 rounded-[14px] shadow-[0_6px_20px_rgba(0,0,0,0.25)] z-[3] animate-bubble-pop after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[7px] after:border-transparent after:border-t-white">
           Hide your password...
         </div>
       )}

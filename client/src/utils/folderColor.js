@@ -1,4 +1,15 @@
-const PALETTE = ['#6c5ce7', '#e84393', '#00cec9', '#fdcb6e', '#a29bfe', '#a55eea']
+// A decorative, categorical palette for telling folders apart at a glance —
+// deliberately separate from the semantic accent/growth/amber tokens in
+// index.css, so collapsing those to a smaller set (see the Momentum
+// redesign) doesn't reduce how many distinct folder colors are available.
+const PALETTE = [
+	'#5b78ff',
+	'#35d0a5',
+	'#9a7bff',
+	'#4fb8e0',
+	'#e0a955',
+	'#e0839f',
+]
 
 export function folderColor(name) {
 	if (!name) return PALETTE[0]
