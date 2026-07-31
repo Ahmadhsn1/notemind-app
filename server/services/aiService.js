@@ -329,4 +329,36 @@ ${context}`;
   return parsed.recap || '';
 };
 
-module.exports = { summarizeAndTag, streamAnswerFromNotes, STREAM_META_DELIMITER, stripJsonFences, generateTitle, assistWriting, embedText, cosineSimilarity, generateFlashcards, generateWeeklyDigest };
+// The daily resurfacing engine's reflection line — Momo commenting on an old
+// note being resurfaced, optionally tying it to whatever the user's been
+// writing about recently (the "anchor" note that made this old note surface
+// in the first place). Same best-effort convention as generateWeeklyDigest:
+// callers wrap this in try/catch and treat a thrown error as "no reflection
+// today," never as a reason to fail the whole resurfacing endpoint.
+const generateResurfaceReflection = async (oldNote, anchorNote) => {
+  const oldBody = oldNote.body.length > 600 ? `${oldNote.body.slice(0, 600)}...` : oldNote.body;
+  const anchorContext = anchorNote
+    ? `\n\nFor context, here's what the user has been writing about recently — "${anchorNote.title}":\n${anchorNote.body.length > 400 ? `${anchorNote.body.slice(0, 400)}...` : anchorNote.body}`
+    : '';
+
+  const prompt = `You are Momo, a friendly assistant built into the Notemind notes app. The user is being shown an old note they wrote a while back, resurfaced by the app to help them reconnect with their own past thinking.
+
+Return ONLY a valid JSON object (no markdown, no code fences, no extra text) in this exact format:
+{"reflection": "a short 1-2 sentence reflective comment or question"}
+
+Rules:
+- Reference at least one concrete, specific detail actually present in the old note below (an actual topic, term, or phrase) — never generic filler like "this note" or "your thoughts"
+- Write in second person ("you"), as a gentle observation or question inviting reflection — not a summary
+- If recent context is provided below, you may naturally tie the old note to it, but only if it feels genuine — don't force a connection
+- Keep it to 1-2 sentences
+- respond with ONLY the JSON object, nothing else
+
+Old note — "${oldNote.title}" (written ${Math.round((Date.now() - new Date(oldNote.createdAt).getTime()) / (24 * 60 * 60 * 1000))} days ago):
+${oldBody}${anchorContext}`;
+
+  const parsed = await generateJsonWithRetry(prompt);
+
+  return parsed.reflection || '';
+};
+
+module.exports = { summarizeAndTag, streamAnswerFromNotes, STREAM_META_DELIMITER, stripJsonFences, generateTitle, assistWriting, embedText, cosineSimilarity, generateFlashcards, generateWeeklyDigest, generateResurfaceReflection };

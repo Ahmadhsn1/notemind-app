@@ -15,6 +15,7 @@ import CommandPalette from '../components/CommandPalette'
 import FlashcardReview from '../components/FlashcardReview'
 import DigestWidget from '../components/DigestWidget'
 import MomentumHero from '../components/MomentumHero'
+import ResurfaceCard from '../components/ResurfaceCard'
 import CursorSpotlight from '../components/CursorSpotlight'
 import {legacyBodyToHtml} from '../utils/legacyBodyToHtml'
 import {toLocalDateKey} from '../utils/dateKey'
@@ -457,6 +458,8 @@ function Dashboard() {
 						onSelectDay={(day) => setSelectedDay((prev) => (prev === day ? null : day))}
 					/>
 				)}
+
+				{view === 'active' && <ResurfaceCard onViewNote={handleViewNote} />}
 
 				{view === 'active' && <DigestWidget onViewNote={handleViewNote} />}
 
