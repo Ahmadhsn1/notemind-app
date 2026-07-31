@@ -20,4 +20,9 @@ const sendNotificationSchema = z.object({
   { message: 'Single target requires exactly one user', path: ['userIds'] }
 );
 
-module.exports = { updateRoleSchema, suspendSchema, sendNotificationSchema };
+const bulkUserActionSchema = z.object({
+  userIds: z.array(z.string()).min(1).max(200),
+  action: z.enum(['suspend', 'unsuspend', 'delete', 'role_user', 'role_admin']),
+});
+
+module.exports = { updateRoleSchema, suspendSchema, sendNotificationSchema, bulkUserActionSchema };

@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const archiver = require('archiver');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
@@ -7,7 +6,7 @@ const Note = require('../models/Note');
 const NoteVersion = require('../models/NoteVersion');
 const { summarizeAndTag, streamAnswerFromNotes, STREAM_META_DELIMITER, stripJsonFences, generateTitle, assistWriting, embedText, cosineSimilarity, generateWeeklyDigest } = require('../services/aiService');
 const { sanitizeNoteHtml, htmlToPlainText, HtmlTooLargeError } = require('../utils/htmlSanitizer');
-const { htmlToMarkdown } = require('../utils/markdownConverter');
+const { buildUserNotesExport } = require('../services/noteExport');
 const { uploadsDir, urlFor } = require('../services/uploadStorage');
 const { broadcastAdminUpdate } = require('../services/socket');
 const HttpError = require('../utils/HttpError');
@@ -791,79 +790,12 @@ const uploadImage = async (req, res) => {
 
 // A real backup, not just "the current view" — includes archived/trashed notes
 // with their state flags intact, so a restore (manual for now; there's no
-// import endpoint yet) wouldn't silently lose that context.
-const exportNotesJson = async (req, res) => {
-  const notes = await Note.find({ user: req.user.id })
-    .select('-embedding')
-    .sort({ createdAt: 1 });
+// import endpoint yet) wouldn't silently lose that context. Delegates to the
+// shared service (server/services/noteExport.js) also used by the admin
+// per-user export routes, so both stay identical in behavior.
+const exportNotesJson = (req, res) => buildUserNotesExport(req.user.id, 'json', res);
 
-  const exportDate = new Date().toISOString().slice(0, 10);
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="notemind-export-${exportDate}.json"`);
-  res.status(200).json({
-    exportedAt: new Date().toISOString(),
-    noteCount: notes.length,
-    notes,
-  });
-};
-
-// Strips characters that are unsafe/awkward across filesystems and appends a
-// short id suffix — titles collide constantly in practice (this account alone
-// has several notes literally titled "sss"/"ss"), so the suffix is load-bearing,
-// not decorative.
-const safeMarkdownFilename = (title, id) => {
-  const base = (title || 'untitled')
-    .trim()
-    .replace(/[/\\?%*:|"<>]/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 60) || 'untitled';
-  return `${base} (${id.toString().slice(-6)}).md`;
-};
-
-const exportNotesMarkdown = async (req, res) => {
-  const notes = await Note.find({ user: req.user.id })
-    .select('-embedding')
-    .sort({ createdAt: 1 });
-
-  const exportDate = new Date().toISOString().slice(0, 10);
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename="notemind-export-${exportDate}.zip"`);
-
-  const archive = archiver('zip', { zlib: { level: 9 } });
-  // Errors from the archiver stream arrive via this event, not as a rejected
-  // promise — throwing here would be an uncaught exception in an event
-  // callback, not something the controller's own async/await could catch.
-  archive.on('error', (err) => {
-    console.error('Export archive error:', err);
-    if (!res.headersSent) res.status(500).json({ message: 'Export failed' });
-    else res.end();
-  });
-  archive.pipe(res);
-
-  const usedNames = new Set();
-  for (const note of notes) {
-    let filename = safeMarkdownFilename(note.title, note._id);
-    while (usedNames.has(filename)) filename = filename.replace(/\.md$/, '-dup.md');
-    usedNames.add(filename);
-
-    const frontMatter = [
-      '---',
-      `title: ${JSON.stringify(note.title)}`,
-      `folder: ${JSON.stringify(note.folder)}`,
-      `tags: [${note.tags.map((t) => JSON.stringify(t)).join(', ')}]`,
-      `createdAt: ${note.createdAt.toISOString()}`,
-      `updatedAt: ${note.updatedAt.toISOString()}`,
-      '---',
-      '',
-    ].join('\n');
-
-    const markdown = htmlToMarkdown(note.contentHtml) || note.body || '';
-    archive.append(`${frontMatter}${markdown}\n`, { name: filename });
-  }
-
-  await archive.finalize();
-};
+const exportNotesMarkdown = (req, res) => buildUserNotesExport(req.user.id, 'markdown', res);
 
 module.exports = {
   getNotes,

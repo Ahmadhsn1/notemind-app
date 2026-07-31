@@ -30,4 +30,13 @@ const uploadLimiter = rateLimit({
   message: { message: 'Too many uploads. Try again later.' },
 });
 
-module.exports = { authLimiter, aiLimiter, uploadLimiter };
+// Static config mirror of the limiters above, for the admin System tab to
+// display — express-rate-limit doesn't expose a stable public API to read a
+// limiter's own config back out, so these numbers are kept in sync by hand.
+const rateLimitConfig = {
+  auth: { windowMs: 15 * 60 * 1000, limit: 20, scope: 'login/register' },
+  ai: { windowMs: 15 * 60 * 1000, limit: 60, scope: 'AI-backed routes' },
+  upload: { windowMs: 15 * 60 * 1000, limit: 30, scope: 'image uploads' },
+};
+
+module.exports = { authLimiter, aiLimiter, uploadLimiter, rateLimitConfig };

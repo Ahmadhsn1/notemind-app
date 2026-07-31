@@ -12,7 +12,14 @@ const adminAuditLogSchema = new mongoose.Schema({
   },
   action: {
     type: String,
-    enum: ['promote', 'demote', 'suspend', 'unsuspend', 'delete_user', 'reset_password', 'delete_note', 'send_notification', 'delete_notification'],
+    enum: [
+      'promote', 'demote', 'suspend', 'unsuspend', 'delete_user', 'reset_password',
+      'delete_note', 'send_notification', 'delete_notification',
+      'archive_note', 'unarchive_note', 'trash_note', 'restore_note', 'permanently_delete_note', 'unpin_note',
+      'delete_flashcard',
+      'export_user_data',
+      'bulk_suspend', 'bulk_unsuspend', 'bulk_delete_user', 'bulk_role_change',
+    ],
     required: true,
   },
   targetUser: {
@@ -22,6 +29,15 @@ const adminAuditLogSchema = new mongoose.Schema({
   targetLabel: {
     type: String,
     required: true,
+  },
+  // Cheap before/after snapshots for mutations where capturing the prior
+  // value costs nothing extra (role/suspend changes) — omitted for actions
+  // where a snapshot isn't meaningful or cheap (e.g. delete_note, bulk_*).
+  before: {
+    type: mongoose.Schema.Types.Mixed,
+  },
+  after: {
+    type: mongoose.Schema.Types.Mixed,
   },
 }, { timestamps: true });
 

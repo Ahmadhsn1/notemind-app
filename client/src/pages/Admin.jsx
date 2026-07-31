@@ -6,9 +6,11 @@ import {useAuth} from '../context/AuthContext'
 import {useToast} from '../context/ToastContext'
 import {relativeTime, activityStatus} from '../utils/relativeTime'
 import ConfirmModal from '../components/ConfirmModal'
-import AdminNotesModal from '../components/AdminNotesModal'
+import AdminUserContentModal from '../components/AdminUserContentModal'
 import AdminPasswordResetModal from '../components/AdminPasswordResetModal'
 import SendNotificationModal from '../components/SendNotificationModal'
+import AdminBulkActionBar from '../components/AdminBulkActionBar'
+import AdminSystemPanel from '../components/AdminSystemPanel'
 
 function StatTile({label, value}) {
 	return (
@@ -55,7 +57,41 @@ const ACTION_VERBS = {
 	delete_note: 'deleted note',
 	send_notification: 'sent a notification to',
 	delete_notification: 'deleted a notification sent to',
+	archive_note: 'archived note',
+	unarchive_note: 'unarchived note',
+	trash_note: 'trashed note',
+	restore_note: 'restored note',
+	permanently_delete_note: 'permanently deleted note',
+	unpin_note: 'unpinned note',
+	delete_flashcard: 'deleted a flashcard from',
+	export_user_data: 'exported data for',
+	bulk_suspend: 'bulk-suspended',
+	bulk_unsuspend: 'bulk-unsuspended',
+	bulk_delete_user: 'bulk-deleted',
+	bulk_role_change: 'bulk-changed role for',
 }
+
+// Groups audit actions into the filter dropdown's categories — client-side
+// only (100 entries is small enough to filter in-browser, no new endpoint).
+const ACTION_CATEGORY = {
+	promote: 'users', demote: 'users', suspend: 'users', unsuspend: 'users', delete_user: 'users', reset_password: 'users',
+	bulk_suspend: 'users', bulk_unsuspend: 'users', bulk_delete_user: 'users', bulk_role_change: 'users',
+	delete_note: 'notes', archive_note: 'notes', unarchive_note: 'notes', trash_note: 'notes', restore_note: 'notes',
+	permanently_delete_note: 'notes', unpin_note: 'notes',
+	delete_flashcard: 'flashcards',
+	send_notification: 'notifications', delete_notification: 'notifications',
+	export_user_data: 'data',
+}
+const AUDIT_CATEGORIES = [['all', 'All'], ['users', 'Users'], ['notes', 'Notes'], ['flashcards', 'Flashcards'], ['notifications', 'Notifications'], ['data', 'Data']]
+
+const TABS = [
+	['overview', 'Overview'],
+	['users', 'Users'],
+	['content', 'Content'],
+	['notifications', 'Notifications'],
+	['audit', 'Audit log'],
+	['system', 'System'],
+]
 
 const actionBtnClass = 'py-1 px-2 rounded-[6px] text-[11px] font-semibold cursor-pointer transition-[opacity,transform] duration-150 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap'
 
@@ -70,6 +106,7 @@ function NotificationRow({notification, expanded, onToggleExpand, onDelete}) {
 					<p className="text-ink/85 truncate">{notification.message}</p>
 					<span className="text-ink/40 text-[11px]">
 						{notification.readCount}/{notification.totalRecipients} read · {relativeTime(notification.createdAt)}
+						{notification.createdBy ? ` · sent by ${notification.createdBy.name}` : ''}
 					</span>
 				</button>
 				<button
@@ -92,21 +129,32 @@ function NotificationRow({notification, expanded, onToggleExpand, onDelete}) {
 
 function Admin() {
 	const {user: currentUser} = useAuth()
+	const [activeTab, setActiveTab] = useState('overview')
 	const [stats, setStats] = useState(null)
 	const [users, setUsers] = useState(null)
 	const [growth, setGrowth] = useState(null)
 	const [auditLog, setAuditLog] = useState(null)
+	const [auditFilter, setAuditFilter] = useState('all')
 	const [notifications, setNotifications] = useState(null)
+	const [system, setSystem] = useState(null)
 	const [showSendModal, setShowSendModal] = useState(false)
 	const [expandedNotifId, setExpandedNotifId] = useState(null)
 	const [loading, setLoading] = useState(true)
 	const [live, setLive] = useState(false)
 	const [actingOnId, setActingOnId] = useState(null)
 	const [deleteTarget, setDeleteTarget] = useState(null)
-	const [notesUserId, setNotesUserId] = useState(null)
+	const [contentUserId, setContentUserId] = useState(null)
 	const [passwordResetResult, setPasswordResetResult] = useState(null)
+	const [selectedIds, setSelectedIds] = useState([])
+	const [exportOpenId, setExportOpenId] = useState(null)
+	const [exportingKey, setExportingKey] = useState(null)
 	const toast = useToast()
 	const mountedRef = useRef(true)
+	const activeTabRef = useRef(activeTab)
+	useEffect(() => {
+		activeTabRef.current = activeTab
+	})
+
 	// Ticks the "Last active" column live (Active / less than a min / X min)
 	// instead of it being frozen at whatever moment the table last rendered
 	// for some other reason (a socket-triggered refetch, a manual action) —
@@ -123,22 +171,29 @@ function Admin() {
 	// failure there shouldn't interrupt an admin mid-read the way a failed
 	// initial load should) and never needs to re-arm the loading spinner,
 	// since `loading` already starts `true` and only this function ever turns
-	// it off.
+	// it off. System status is only fetched when that tab is active — no
+	// point polling operational data nobody's looking at on every mutation
+	// elsewhere in the app.
 	const loadAdminData = async (silent = false) => {
 		try {
-			const [statsRes, usersRes, growthRes, auditRes, notificationsRes] = await Promise.all([
+			const calls = [
 				api.get('/admin/stats'),
 				api.get('/admin/users'),
 				api.get('/admin/growth'),
 				api.get('/admin/audit-log'),
 				api.get('/admin/notifications'),
-			])
+			]
+			const includeSystem = activeTabRef.current === 'system'
+			if (includeSystem) calls.push(api.get('/admin/system'))
+
+			const results = await Promise.all(calls)
 			if (!mountedRef.current) return
-			setStats(statsRes.data)
-			setUsers(usersRes.data)
-			setGrowth(growthRes.data)
-			setAuditLog(auditRes.data)
-			setNotifications(notificationsRes.data)
+			setStats(results[0].data)
+			setUsers(results[1].data)
+			setGrowth(results[2].data)
+			setAuditLog(results[3].data)
+			setNotifications(results[4].data)
+			if (includeSystem) setSystem(results[5].data)
 		} catch {
 			if (mountedRef.current && !silent) toast.error('Could not load admin data.')
 		} finally {
@@ -153,6 +208,18 @@ function Admin() {
 		return () => { mountedRef.current = false }
 	}, [])
 	/* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
+
+	// Fetch System data the first time that tab is opened (loadAdminData only
+	// includes it on subsequent refreshes once activeTabRef already points at
+	// 'system').
+	useEffect(() => {
+		if (activeTab === 'system' && system === null) {
+			api.get('/admin/system').then((res) => { if (mountedRef.current) setSystem(res.data) }).catch(() => {
+				if (mountedRef.current) toast.error('Could not load system status.')
+			})
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- toast is stable, system checked via closure is intentional (only fetch once)
+	}, [activeTab])
 
 	// Server pushes a bare "something changed" signal (see
 	// server/services/socket.js's broadcastAdminUpdate) whenever any
@@ -186,12 +253,6 @@ function Admin() {
 
 	const patchUser = (id, fields) => {
 		setUsers((prev) => prev.map((u) => (u._id === id ? {...u, ...fields} : u)))
-	}
-
-	const handleNoteDeleted = (userId) => {
-		setUsers((prev) => prev.map((u) => (u._id === userId ? {...u, noteCount: Math.max(0, u.noteCount - 1)} : u)))
-		setStats((prev) => (prev ? {...prev, totalNotes: Math.max(0, prev.totalNotes - 1)} : prev))
-		refreshAuditLog()
 	}
 
 	const refreshAuditLog = async () => {
@@ -274,6 +335,78 @@ function Admin() {
 		}
 	}
 
+	// Called from AdminUserContentModal after a note lifecycle action —
+	// `opts.removed` only true for the permanent-delete path, since that's
+	// the only one that actually changes the note count.
+	const handleContentChanged = (userId, opts) => {
+		if (opts?.removed) {
+			setUsers((prev) => prev.map((u) => (u._id === userId ? {...u, noteCount: Math.max(0, u.noteCount - 1)} : u)))
+			setStats((prev) => (prev ? {...prev, totalNotes: Math.max(0, prev.totalNotes - 1)} : prev))
+		}
+		refreshAuditLog()
+	}
+
+	const toggleSelected = (id) => {
+		setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+	}
+
+	// Selects/clears every selectable row at once (excludes the current
+	// admin's own account, same as the per-row checkboxes already do).
+	const selectableUserIds = users ? users.filter((u) => u._id !== currentUser?._id).map((u) => u._id) : []
+	const allSelected = selectableUserIds.length > 0 && selectableUserIds.every((id) => selectedIds.includes(id))
+	const toggleSelectAll = () => {
+		setSelectedIds(allSelected ? [] : selectableUserIds)
+	}
+
+	const handleBulkApplied = (actionKey, ids) => {
+		if (actionKey === 'suspend') setUsers((prev) => prev.map((u) => (ids.includes(u._id) ? {...u, suspended: true} : u)))
+		else if (actionKey === 'unsuspend') setUsers((prev) => prev.map((u) => (ids.includes(u._id) ? {...u, suspended: false} : u)))
+		else if (actionKey === 'role_admin') setUsers((prev) => prev.map((u) => (ids.includes(u._id) ? {...u, role: 'admin'} : u)))
+		else if (actionKey === 'role_user') setUsers((prev) => prev.map((u) => (ids.includes(u._id) ? {...u, role: 'user'} : u)))
+		else if (actionKey === 'delete') {
+			setUsers((prev) => prev.filter((u) => !ids.includes(u._id)))
+			setStats((prev) => (prev ? {...prev, totalUsers: Math.max(0, prev.totalUsers - ids.length)} : prev))
+		}
+		refreshAuditLog()
+	}
+
+	// Same raw-fetch + manual Authorization header + Blob + temporary
+	// <a download> pattern as Account.jsx's self-service export (axios
+	// doesn't make authenticated blob downloads easy).
+	const handleExportUser = async (u, format) => {
+		const key = `${u._id}:${format}`
+		setExportingKey(key)
+		try {
+			const token = getAuthToken()
+			const res = await fetch(`${api.defaults.baseURL}/admin/users/${u._id}/export/${format}`, {
+				headers: token ? {Authorization: `Bearer ${token}`} : {},
+			})
+			if (!res.ok) throw new Error('Export failed.')
+
+			const blob = await res.blob()
+			const disposition = res.headers.get('Content-Disposition') || ''
+			const filenameMatch = disposition.match(/filename="([^"]+)"/)
+			const filename = filenameMatch?.[1] || `notemind-export.${format === 'json' ? 'json' : 'zip'}`
+
+			const url = URL.createObjectURL(blob)
+			const link = document.createElement('a')
+			link.href = url
+			link.download = filename
+			document.body.appendChild(link)
+			link.click()
+			link.remove()
+			URL.revokeObjectURL(url)
+			refreshAuditLog()
+		} catch {
+			toast.error(`Could not export ${u.name}'s notes.`)
+		} finally {
+			setExportingKey(null)
+			setExportOpenId(null)
+		}
+	}
+
+	const filteredAuditLog = auditLog && (auditFilter === 'all' ? auditLog : auditLog.filter((e) => ACTION_CATEGORY[e.action] === auditFilter))
+
 	return (
 		<div className="min-h-screen p-[18px] min-[761px]:p-7 flex flex-col gap-6 max-w-[1040px] mx-auto">
 			<div className="flex items-center gap-3">
@@ -296,152 +429,256 @@ function Admin() {
 				</span>
 			</div>
 
+			<div className="flex flex-wrap gap-1.5 border-b border-ink/10 pb-3 -mt-1">
+				{TABS.map(([key, label]) => (
+					<button
+						key={key}
+						onClick={() => setActiveTab(key)}
+						className={`py-1.5 px-3 rounded-[8px] text-[12.5px] font-semibold cursor-pointer transition-colors ${
+							activeTab === key ? 'bg-accent/22 text-accent border border-accent/40' : 'bg-ink/6 border border-ink/12 text-ink/60 hover:text-ink'
+						}`}
+					>{label}</button>
+				))}
+			</div>
+
 			{loading ? (
 				<div className="h-[200px] flex items-center justify-center text-ink/40 text-[13px]">Loading…</div>
 			) : (
 				<>
-					<div className="grid grid-cols-2 min-[560px]:grid-cols-5 gap-3">
-						<StatTile label="Total users" value={stats.totalUsers} />
-						<StatTile label="Active (7d)" value={stats.activeUsers} />
-						<StatTile label="New (7d)" value={stats.newUsersThisWeek} />
-						<StatTile label="Total notes" value={stats.totalNotes} />
-						<StatTile label="Total flashcards" value={stats.totalFlashcards} />
-					</div>
+					{activeTab === 'overview' && (
+						<>
+							<div className="grid grid-cols-2 min-[560px]:grid-cols-5 gap-3">
+								<StatTile label="Total users" value={stats.totalUsers} />
+								<StatTile label="Active (7d)" value={stats.activeUsers} />
+								<StatTile label="New (7d)" value={stats.newUsersThisWeek} />
+								<StatTile label="Total notes" value={stats.totalNotes} />
+								<StatTile label="Total flashcards" value={stats.totalFlashcards} />
+							</div>
 
-					<div className="grid grid-cols-1 min-[640px]:grid-cols-2 gap-3">
-						<GrowthChart
-							label="Signups"
-							data={growth}
-							dataKey="signups"
-							color="var(--color-accent)"
-							total={growth.reduce((sum, d) => sum + d.signups, 0)}
-						/>
-						<GrowthChart
-							label="Notes created"
-							data={growth}
-							dataKey="notes"
-							color="var(--color-growth)"
-							total={growth.reduce((sum, d) => sum + d.notes, 0)}
-						/>
-					</div>
+							<div className="grid grid-cols-1 min-[640px]:grid-cols-2 gap-3">
+								<GrowthChart
+									label="Signups"
+									data={growth}
+									dataKey="signups"
+									color="var(--color-accent)"
+									total={growth.reduce((sum, d) => sum + d.signups, 0)}
+								/>
+								<GrowthChart
+									label="Notes created"
+									data={growth}
+									dataKey="notes"
+									color="var(--color-growth)"
+									total={growth.reduce((sum, d) => sum + d.notes, 0)}
+								/>
+							</div>
+						</>
+					)}
 
-					<div className="rounded-[14px] border border-ink/12 bg-ink/4 overflow-hidden">
-						<div className="overflow-x-auto">
-							<table className="w-full text-[13px] border-collapse min-w-[820px]">
-								<thead>
-									<tr className="border-b border-ink/10 text-left text-[10.5px] font-bold uppercase tracking-[0.05em] text-ink/40">
-										<th className="py-2.5 px-3.5">User</th>
-										<th className="py-2.5 px-3.5">Sign-in</th>
-										<th className="py-2.5 px-3.5">Joined</th>
-										<th className="py-2.5 px-3.5">Last active</th>
-										<th className="py-2.5 px-3.5 text-right">Notes</th>
-										<th className="py-2.5 px-3.5 text-right">Flashcards</th>
-										<th className="py-2.5 px-3.5">Actions</th>
-									</tr>
-								</thead>
-								<tbody>
-									{users.map((u) => {
-										const isSelf = u._id === currentUser?._id
-										const acting = actingOnId === u._id
-										return (
-											<tr key={u._id} className="border-b border-ink/6 last:border-0">
-												<td className="py-2.5 px-3.5">
-													<div className="font-semibold flex items-center gap-1.5">
-														{u.name}
-														{u.role === 'admin' && <span className="text-[10px] font-bold uppercase tracking-[0.04em] text-accent">Admin</span>}
-														{u.suspended && <span className="text-[10px] font-bold uppercase tracking-[0.04em] text-danger-light">Suspended</span>}
-													</div>
-													<div className="text-ink/45 text-[12px]">{u.email}</div>
-												</td>
-												<td className="py-2.5 px-3.5 text-ink/60 capitalize">{u.authProvider}</td>
-												<td className="py-2.5 px-3.5 text-ink/60">{relativeTime(u.createdAt)}</td>
-												<td className="py-2.5 px-3.5 text-ink/60">{u.lastActiveAt || u.lastLoginAt ? activityStatus(u.lastActiveAt || u.lastLoginAt, now) : 'Never'}</td>
-												<td className="py-2.5 px-3.5 text-right tabular-nums">{u.noteCount}</td>
-												<td className="py-2.5 px-3.5 text-right tabular-nums">{u.flashcardCount}</td>
-												<td className="py-2.5 px-3.5">
-													<div className="flex items-center gap-1.5 flex-wrap max-w-[260px]">
-														<button
-															onClick={() => setNotesUserId(u._id)}
-															className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
-														>Notes</button>
-														{isSelf ? (
-															<span className="text-ink/30 text-[11px] py-1">self</span>
-														) : (
-															<>
-																<button
-																	onClick={() => handleToggleRole(u)}
-																	disabled={acting}
-																	className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
-																>{u.role === 'admin' ? 'Demote' : 'Promote'}</button>
-																<button
-																	onClick={() => handleToggleSuspend(u)}
-																	disabled={acting}
-																	className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
-																>{u.suspended ? 'Unsuspend' : 'Suspend'}</button>
-																<button
-																	onClick={() => handleResetPassword(u)}
-																	disabled={acting}
-																	className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
-																>Reset pw</button>
-																<button
-																	onClick={() => setDeleteTarget(u)}
-																	disabled={acting}
-																	className={`${actionBtnClass} bg-danger/15 border border-danger/30 text-danger-light hover:bg-danger/25`}
-																>Delete</button>
-															</>
-														)}
-													</div>
-												</td>
+					{activeTab === 'users' && (
+						<>
+							<AdminBulkActionBar
+								selectedIds={selectedIds}
+								users={users}
+								onCleared={() => setSelectedIds([])}
+								onApplied={handleBulkApplied}
+							/>
+
+							<div className="rounded-[14px] border border-ink/12 bg-ink/4 overflow-hidden">
+								<div className="overflow-x-auto">
+									<table className="w-full text-[13px] border-collapse min-w-[900px]">
+										<thead>
+											<tr className="border-b border-ink/10 text-left text-[10.5px] font-bold uppercase tracking-[0.05em] text-ink/40">
+												<th className="py-2.5 px-3.5 w-8">
+													{selectableUserIds.length > 0 && (
+														<input type="checkbox" checked={allSelected} onChange={toggleSelectAll} title="Select all" />
+													)}
+												</th>
+												<th className="py-2.5 px-3.5">User</th>
+												<th className="py-2.5 px-3.5">Sign-in</th>
+												<th className="py-2.5 px-3.5">Joined</th>
+												<th className="py-2.5 px-3.5">Last active</th>
+												<th className="py-2.5 px-3.5 text-right">Notes</th>
+												<th className="py-2.5 px-3.5 text-right">Flashcards</th>
+												<th className="py-2.5 px-3.5">Actions</th>
 											</tr>
-										)
-									})}
-								</tbody>
-							</table>
-						</div>
-					</div>
+										</thead>
+										<tbody>
+											{users.map((u) => {
+												const isSelf = u._id === currentUser?._id
+												const acting = actingOnId === u._id
+												return (
+													<tr key={u._id} className="border-b border-ink/6 last:border-0">
+														<td className="py-2.5 px-3.5">
+															{!isSelf && (
+																<input
+																	type="checkbox"
+																	checked={selectedIds.includes(u._id)}
+																	onChange={() => toggleSelected(u._id)}
+																/>
+															)}
+														</td>
+														<td className="py-2.5 px-3.5">
+															<div className="font-semibold flex items-center gap-1.5">
+																{u.name}
+																{u.role === 'admin' && <span className="text-[10px] font-bold uppercase tracking-[0.04em] text-accent">Admin</span>}
+																{u.suspended && <span className="text-[10px] font-bold uppercase tracking-[0.04em] text-danger-light">Suspended</span>}
+															</div>
+															<div className="text-ink/45 text-[12px]">{u.email}</div>
+														</td>
+														<td className="py-2.5 px-3.5 text-ink/60 capitalize">{u.authProvider}</td>
+														<td className="py-2.5 px-3.5 text-ink/60">{relativeTime(u.createdAt)}</td>
+														<td className="py-2.5 px-3.5 text-ink/60">{u.lastActiveAt || u.lastLoginAt ? activityStatus(u.lastActiveAt || u.lastLoginAt, now) : 'Never'}</td>
+														<td className="py-2.5 px-3.5 text-right tabular-nums">{u.noteCount}</td>
+														<td className="py-2.5 px-3.5 text-right tabular-nums">{u.flashcardCount}</td>
+														<td className="py-2.5 px-3.5">
+															<div className="flex items-center gap-1.5 flex-wrap max-w-[320px]">
+																<button
+																	onClick={() => setContentUserId(u._id)}
+																	className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
+																>Content</button>
+																<div className="relative">
+																	<button
+																		onClick={() => setExportOpenId((id) => (id === u._id ? null : u._id))}
+																		className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
+																	>Export ▾</button>
+																	{exportOpenId === u._id && (
+																		<div className="absolute z-10 top-full left-0 mt-1 flex flex-col rounded-[8px] border border-ink/15 bg-ink-deep/95 overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.4)]">
+																			<button
+																				onClick={() => handleExportUser(u, 'json')}
+																				disabled={exportingKey === `${u._id}:json`}
+																				className="py-1.5 px-3 text-[11.5px] text-left whitespace-nowrap text-ink/70 hover:text-ink hover:bg-ink/10 disabled:opacity-40"
+																			>{exportingKey === `${u._id}:json` ? 'Exporting…' : 'Export JSON'}</button>
+																			<button
+																				onClick={() => handleExportUser(u, 'markdown')}
+																				disabled={exportingKey === `${u._id}:markdown`}
+																				className="py-1.5 px-3 text-[11.5px] text-left whitespace-nowrap text-ink/70 hover:text-ink hover:bg-ink/10 disabled:opacity-40"
+																			>{exportingKey === `${u._id}:markdown` ? 'Exporting…' : 'Export Markdown'}</button>
+																		</div>
+																	)}
+																</div>
+																{isSelf ? (
+																	<span className="text-ink/30 text-[11px] py-1">self</span>
+																) : (
+																	<>
+																		<button
+																			onClick={() => handleToggleRole(u)}
+																			disabled={acting}
+																			className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
+																		>{u.role === 'admin' ? 'Demote' : 'Promote'}</button>
+																		<button
+																			onClick={() => handleToggleSuspend(u)}
+																			disabled={acting}
+																			className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
+																		>{u.suspended ? 'Unsuspend' : 'Suspend'}</button>
+																		<button
+																			onClick={() => handleResetPassword(u)}
+																			disabled={acting}
+																			className={`${actionBtnClass} bg-ink/8 border border-ink/15 text-ink/70 hover:text-ink`}
+																		>Reset pw</button>
+																		<button
+																			onClick={() => setDeleteTarget(u)}
+																			disabled={acting}
+																			className={`${actionBtnClass} bg-danger/15 border border-danger/30 text-danger-light hover:bg-danger/25`}
+																		>Delete</button>
+																	</>
+																)}
+															</div>
+														</td>
+													</tr>
+												)
+											})}
+										</tbody>
+									</table>
+								</div>
+							</div>
+						</>
+					)}
 
-					<div className="flex flex-col gap-2.5">
-						<div className="flex items-center justify-between">
-							<h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink/40">Notifications sent</h2>
-							<button
-								onClick={() => setShowSendModal(true)}
-								className="py-1.5 px-3 rounded-[7px] text-[11.5px] font-semibold bg-accent/20 text-accent cursor-pointer transition-colors hover:bg-accent/28"
-							>+ Send notification</button>
+					{activeTab === 'content' && (
+						<div className="flex flex-col gap-2.5">
+							<h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink/40">Pick a user to view their content</h2>
+							<div className="rounded-[14px] border border-ink/12 bg-ink/4 divide-y divide-ink/6">
+								{users.length === 0 ? (
+									<p className="text-[13px] text-ink/40 p-4">No users yet.</p>
+								) : (
+									users.map((u) => (
+										<button
+											key={u._id}
+											onClick={() => setContentUserId(u._id)}
+											className="w-full flex items-center justify-between gap-3 py-2.5 px-3.5 text-left cursor-pointer hover:bg-ink/5 transition-colors"
+										>
+											<div className="min-w-0">
+												<div className="text-[13px] font-semibold truncate">{u.name}</div>
+												<div className="text-ink/45 text-[12px] truncate">{u.email}</div>
+											</div>
+											<div className="shrink-0 flex items-center gap-3 text-[11.5px] text-ink/45 tabular-nums">
+												<span>{u.noteCount} notes</span>
+												<span>{u.flashcardCount} cards</span>
+											</div>
+										</button>
+									))
+								)}
+							</div>
 						</div>
-						<div className="rounded-[14px] border border-ink/12 bg-ink/4 divide-y divide-ink/6">
-							{notifications.length === 0 ? (
-								<p className="text-[13px] text-ink/40 p-4">No notifications sent yet.</p>
-							) : (
-								notifications.map((n) => (
-									<NotificationRow
-										key={n._id}
-										notification={n}
-										expanded={expandedNotifId === n._id}
-										onToggleExpand={() => setExpandedNotifId((id) => (id === n._id ? null : n._id))}
-										onDelete={() => handleDeleteNotification(n._id)}
-									/>
-								))
-							)}
-						</div>
-					</div>
+					)}
 
-					<div className="flex flex-col gap-2.5">
-						<h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink/40">Recent activity</h2>
-						<div className="rounded-[14px] border border-ink/12 bg-ink/4 divide-y divide-ink/6">
-							{auditLog.length === 0 ? (
-								<p className="text-[13px] text-ink/40 p-4">No admin actions yet.</p>
-							) : (
-								auditLog.map((e) => (
-									<div key={e._id} className="flex items-center justify-between gap-3 py-2.5 px-3.5 text-[12.5px]">
-										<span className="text-ink/70">
-											<span className="font-semibold text-ink">{e.adminName}</span> {ACTION_VERBS[e.action] || e.action} {e.targetLabel}
-										</span>
-										<span className="shrink-0 text-ink/40">{relativeTime(e.createdAt)}</span>
-									</div>
-								))
-							)}
+					{activeTab === 'notifications' && (
+						<div className="flex flex-col gap-2.5">
+							<div className="flex items-center justify-between">
+								<h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink/40">Notifications sent</h2>
+								<button
+									onClick={() => setShowSendModal(true)}
+									className="py-1.5 px-3 rounded-[7px] text-[11.5px] font-semibold bg-accent/20 text-accent cursor-pointer transition-colors hover:bg-accent/28"
+								>+ Send notification</button>
+							</div>
+							<div className="rounded-[14px] border border-ink/12 bg-ink/4 divide-y divide-ink/6">
+								{notifications.length === 0 ? (
+									<p className="text-[13px] text-ink/40 p-4">No notifications sent yet.</p>
+								) : (
+									notifications.map((n) => (
+										<NotificationRow
+											key={n._id}
+											notification={n}
+											expanded={expandedNotifId === n._id}
+											onToggleExpand={() => setExpandedNotifId((id) => (id === n._id ? null : n._id))}
+											onDelete={() => handleDeleteNotification(n._id)}
+										/>
+									))
+								)}
+							</div>
 						</div>
-					</div>
+					)}
+
+					{activeTab === 'audit' && (
+						<div className="flex flex-col gap-2.5">
+							<div className="flex items-center justify-between gap-2">
+								<h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink/40">Recent activity</h2>
+								<select
+									value={auditFilter}
+									onChange={(e) => setAuditFilter(e.target.value)}
+									className="text-[11.5px] font-semibold py-1 px-2 rounded-[6px] bg-ink/8 border border-ink/15 text-ink/70 cursor-pointer"
+								>
+									{AUDIT_CATEGORIES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+								</select>
+							</div>
+							<div className="rounded-[14px] border border-ink/12 bg-ink/4 divide-y divide-ink/6">
+								{filteredAuditLog.length === 0 ? (
+									<p className="text-[13px] text-ink/40 p-4">No admin actions{auditFilter !== 'all' ? ' in this category' : ''} yet.</p>
+								) : (
+									filteredAuditLog.map((e) => (
+										<div key={e._id} className="flex items-center justify-between gap-3 py-2.5 px-3.5 text-[12.5px]">
+											<span className="text-ink/70">
+												<span className="font-semibold text-ink">{e.adminName}</span> {ACTION_VERBS[e.action] || e.action} {e.targetLabel}
+											</span>
+											<span className="shrink-0 text-ink/40">{relativeTime(e.createdAt)}</span>
+										</div>
+									))
+								)}
+							</div>
+						</div>
+					)}
+
+					{activeTab === 'system' && <AdminSystemPanel system={system} />}
 				</>
 			)}
 
@@ -454,7 +691,7 @@ function Admin() {
 				onCancel={() => setDeleteTarget(null)}
 			/>
 
-			{notesUserId && <AdminNotesModal userId={notesUserId} onClose={() => setNotesUserId(null)} onNoteDeleted={handleNoteDeleted} />}
+			{contentUserId && <AdminUserContentModal userId={contentUserId} onClose={() => setContentUserId(null)} onNoteChanged={handleContentChanged} />}
 			{passwordResetResult && <AdminPasswordResetModal result={passwordResetResult} onClose={() => setPasswordResetResult(null)} />}
 			{showSendModal && users && (
 				<SendNotificationModal users={users} onClose={() => setShowSendModal(false)} onSent={refreshAuditLog} />
