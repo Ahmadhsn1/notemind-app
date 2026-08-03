@@ -79,7 +79,8 @@ confirmed images render from R2.
 | `GOOGLE_CLIENT_ID` | optional; must match `VITE_GOOGLE_CLIENT_ID` exactly |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | from step 2 — all four or none |
 | `DAILY_AI_CALL_LIMIT` | optional, default `200` per user per UTC day |
-| `RESEND_API_KEY` / `EMAIL_FROM` | both or neither. Without them password-reset emails are logged, not sent. |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | Gmail backend — no domain needed. Both or neither. |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Resend backend — needs a verified domain. Wins if both backends set. |
 | `SENTRY_DSN` | optional |
 | `LOG_LEVEL` | optional, default `info` |
 
@@ -126,19 +127,33 @@ Routing rules and security headers live in `client/vercel.json`. Read
 `client/VERCEL_NOTES.md` before editing it — the SPA rewrite has to exclude
 `sw.js`, and `sw.js` has to stay uncached, or deploys stop reaching users.
 
-## 5. Email (Resend — free tier: 3,000/month)
+## 5. Email — pick one backend
+
+Only password-reset mail is sent today. With neither backend configured the
+flow still works end to end, but the link is written to the server log rather
+than emailed — developable without credentials, useless to a real user.
+
+**Gmail (no domain needed).** Sends through a normal Gmail account, ~500/day.
+
+1. On that Google account: **Security** → turn on **2-Step Verification**
+   (App passwords don't exist without it).
+2. **Security** → **App passwords** → create one → copy the 16 characters.
+3. Set `GMAIL_USER` (full address) and `GMAIL_APP_PASSWORD`. The spaces Google
+   displays are stripped automatically.
+
+This is **not** your Google account password — it's a separate credential that
+only grants SMTP, and can be revoked on its own.
+
+**Resend (needs a domain).** Better deliverability and a real from-address;
+takes precedence if both are configured.
 
 1. resend.com → create an API key.
-2. Add and verify your sending domain (or use their test sender while
-   developing).
-3. Set `RESEND_API_KEY` and `EMAIL_FROM` (e.g. `NoteMind <noreply@yourdomain>`)
-   on the API service. Both together or neither — the server refuses to boot
-   on a half-configured pair.
+2. Add and verify your sending domain by DNS. You cannot verify `gmail.com` —
+   without a domain Resend only delivers to your own signup address.
+3. Set `RESEND_API_KEY` and `EMAIL_FROM`.
 
-Only password-reset mail is sent today. With the pair unset the flow still
-works: the reset link is written to the server log instead of emailed, which
-is what makes it developable without credentials — but a real user would have
-no way to receive it.
+Either way, a half-configured backend refuses to boot rather than silently
+falling back to logging.
 
 ## 6. Google Sign-In (optional)
 

@@ -1,29 +1,63 @@
 const env = require('../config/env');
 const logger = require('./logger');
 
-// Transactional email behind a one-function interface.
+// Transactional email behind a one-function interface, with two backends.
 //
-// Resend is called over plain fetch rather than via its SDK: the request is a
-// single JSON POST, and Node 20+ has fetch built in, so an SDK would be a
-// dependency (and a supply-chain surface) bought for nothing. Swapping to
-// SendGrid/Postmark/SES means changing only `deliver` below.
+// GMAIL — sends through a normal Gmail account using an App Password. No
+// domain required, which is the point: Resend (and every other ESP) can only
+// send from a domain you have verified by DNS, and you cannot verify
+// gmail.com. Without a domain, Resend would only ever deliver to your own
+// address — meaning real users still never receive a password reset, which is
+// precisely the problem this feature exists to solve. Gmail's limit is ~500
+// messages/day and mail arrives from the Gmail address itself.
 //
-// With no API key configured the message is logged instead of sent. That
-// keeps the whole reset flow exercisable in development and in tests without
-// credentials — and, importantly, without silently pretending to send: the
-// log line carries the full link so a developer can complete the flow.
+// RESEND — preferred once a real domain exists: better deliverability, a
+// proper from-address, and no per-account sending cap. Called over plain
+// fetch rather than via its SDK, since the request is one JSON POST and
+// Node 20+ ships fetch.
+//
+// NEITHER — the message is logged rather than sent. That keeps the reset flow
+// exercisable in development and in tests without credentials, and without
+// silently pretending to have sent: the log line carries the full link.
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 
-const isConfigured = () => Boolean(env.RESEND_API_KEY && env.EMAIL_FROM);
+// Resend wins when both are configured — if someone has gone to the trouble
+// of verifying a domain, that is the better channel.
+const provider = () => {
+  if (env.RESEND_API_KEY && env.EMAIL_FROM) return 'resend';
+  if (env.GMAIL_USER && env.GMAIL_APP_PASSWORD) return 'gmail';
+  return null;
+};
 
-const deliver = async ({ to, subject, html, text }) => {
+const isConfigured = () => provider() !== null;
+
+// Gmail's from-address is fixed to the authenticated account — Gmail rewrites
+// anything else — so EMAIL_FROM is only honoured as a display name wrapper.
+const fromAddress = () =>
+  provider() === 'gmail' ? (env.EMAIL_FROM || `NoteMind <${env.GMAIL_USER}>`) : env.EMAIL_FROM;
+
+// Created once, lazily: nodemailer pools connections, and building a
+// transport per message would open a new TLS handshake to Gmail every time.
+let transporter = null;
+const gmailTransport = () => {
+  if (!transporter) {
+    const nodemailer = require('nodemailer');
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: env.GMAIL_USER, pass: env.GMAIL_APP_PASSWORD },
+    });
+  }
+  return transporter;
+};
+
+const deliverViaResend = async ({ to, subject, html, text }) => {
   const response = await fetch(RESEND_ENDPOINT, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject, html, text }),
+    body: JSON.stringify({ from: fromAddress(), to: [to], subject, html, text }),
   });
 
   if (!response.ok) {
@@ -31,18 +65,26 @@ const deliver = async ({ to, subject, html, text }) => {
     // provider error can echo back the recipient address and would turn into
     // an account-existence oracle.
     const detail = await response.text().catch(() => '');
-    throw new Error(`Email provider responded ${response.status}: ${detail.slice(0, 200)}`);
+    throw new Error(`Resend responded ${response.status}: ${detail.slice(0, 200)}`);
   }
 };
 
+const deliverViaGmail = async ({ to, subject, html, text }) => {
+  await gmailTransport().sendMail({ from: fromAddress(), to, subject, html, text });
+};
+
 const sendEmail = async ({ to, subject, html, text }) => {
-  if (!isConfigured()) {
+  const which = provider();
+
+  if (!which) {
     logger.warn({ to, subject, text }, 'Email not configured — message logged instead of sent');
     return { delivered: false };
   }
 
-  await deliver({ to, subject, html, text });
-  logger.info({ to, subject }, 'Email sent');
+  if (which === 'gmail') await deliverViaGmail({ to, subject, html, text });
+  else await deliverViaResend({ to, subject, html, text });
+
+  logger.info({ to, subject, provider: which }, 'Email sent');
   return { delivered: true };
 };
 
@@ -82,4 +124,4 @@ const passwordResetEmail = (name, resetUrl, expiryMinutes) => ({
   `,
 });
 
-module.exports = { sendEmail, passwordResetEmail, isEmailConfigured: isConfigured };
+module.exports = { sendEmail, passwordResetEmail, isEmailConfigured: isConfigured, emailProvider: provider };

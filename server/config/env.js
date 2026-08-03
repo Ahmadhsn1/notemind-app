@@ -53,11 +53,20 @@ const schema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET: z.string().optional(),
 
-  // Transactional email (Resend). Both together or neither — with them unset
-  // the reset flow still works end to end, but the message is logged rather
-  // than sent (see services/email.js), which is what makes it developable
-  // without credentials.
+  // Transactional email — two possible backends, see services/email.js.
+  //
+  // Gmail (GMAIL_USER + GMAIL_APP_PASSWORD) needs no domain, which is why it
+  // exists: an ESP can only send from a DNS-verified domain, and gmail.com
+  // can't be verified. Resend (RESEND_API_KEY + EMAIL_FROM) is preferred once
+  // a real domain is available. With neither, the reset flow still works end
+  // to end but the message is logged instead of sent.
   RESEND_API_KEY: z.string().optional(),
+  GMAIL_USER: z.string().optional(),
+  // A Google App Password, NOT the account password — requires 2-Step
+  // Verification on the account. Google shows it with spaces; they're
+  // cosmetic and stripped below, since pasting it verbatim is the obvious
+  // mistake and produces an opaque auth failure.
+  GMAIL_APP_PASSWORD: z.string().optional().transform((v) => (v ? v.replace(/\s+/g, '') : v)),
   EMAIL_FROM: z.string().optional(),
 
   SENTRY_DSN: z.string().optional(),
@@ -90,10 +99,21 @@ if (isProduction && env.JWT_SECRET.length < 32) {
 
 const geminiKeys = env.GEMINI_API_KEYS ? csv(env.GEMINI_API_KEYS) : (env.GEMINI_API_KEY ? [env.GEMINI_API_KEY] : []);
 
-const emailParts = [env.RESEND_API_KEY, env.EMAIL_FROM];
-if (emailParts.some(Boolean) && !emailParts.every(Boolean)) {
-  fatal('Email is partially configured — set both RESEND_API_KEY and EMAIL_FROM, or neither');
+// Each backend is all-or-nothing. A half-configured one silently falls back
+// to "log instead of send", which looks identical to working right up until a
+// real user needs a password reset.
+if (env.RESEND_API_KEY && !env.EMAIL_FROM) {
+  fatal('RESEND_API_KEY is set but EMAIL_FROM is not — Resend needs a verified from-address');
 }
+const gmailParts = [env.GMAIL_USER, env.GMAIL_APP_PASSWORD];
+if (gmailParts.some(Boolean) && !gmailParts.every(Boolean)) {
+  fatal('Gmail email is partially configured — set both GMAIL_USER and GMAIL_APP_PASSWORD, or neither');
+}
+if (env.GMAIL_USER && !env.GMAIL_USER.includes('@')) {
+  fatal('GMAIL_USER must be a full email address (e.g. you@gmail.com)');
+}
+
+const emailConfigured = Boolean((env.RESEND_API_KEY && env.EMAIL_FROM) || (env.GMAIL_USER && env.GMAIL_APP_PASSWORD));
 
 const r2Parts = [env.R2_ACCOUNT_ID, env.R2_ACCESS_KEY_ID, env.R2_SECRET_ACCESS_KEY, env.R2_BUCKET];
 const r2Configured = r2Parts.every(Boolean);
@@ -114,4 +134,5 @@ module.exports = {
   geminiKeys,
   aiEnabled: geminiKeys.length > 0,
   r2Configured,
+  emailConfigured,
 };

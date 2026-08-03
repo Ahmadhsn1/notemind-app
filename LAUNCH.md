@@ -10,25 +10,17 @@ Total time: roughly an hour, most of it waiting for deploys.
 
 ---
 
-## 0. Generate a new JWT_SECRET  ·  2 min
+## 0. ~~Generate a new JWT_SECRET~~  ·  DONE
 
-The current one is 30 characters. Production requires 32+ and the server will
-refuse to boot below that — deliberately, because this single value protects
-every session in the app.
+Already done — a fresh 64-character secret is in `server/.env`. Production
+requires 32+ and the server refuses to boot below that, since this one value
+protects every session in the app.
 
-```bash
-openssl rand -base64 48
-```
-
-Save the output. You'll paste it into Render in step 5. Also put it in
-`server/.env` so local dev matches:
+You'll need to copy it into Render at step 5:
 
 ```bash
-# edit server/.env, replace the JWT_SECRET= line
+grep '^JWT_SECRET=' server/.env
 ```
-
-> Changing this signs out every existing user. Do it **now**, before you have
-> real users, not after.
 
 ---
 
@@ -75,35 +67,52 @@ Save them. These are `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
 
 ---
 
-## 3. Resend — password reset emails  ·  10 min
+## 3. Gmail App Password — password reset emails  ·  5 min
 
 Without this, a user who forgets their password is locked out permanently and
 you have to reset it for them by hand.
 
-1. Sign up at [resend.com](https://resend.com) (free: 3,000 emails/month).
-2. **API Keys** → **Create API Key** → copy it. This is `RESEND_API_KEY`.
-3. **Domains** → add and verify your domain (DNS records), then set
-   `EMAIL_FROM` to something like `NoteMind <noreply@yourdomain.com>`.
+Using the `notemind.ai.app@gmail.com` account, since no domain is needed:
 
-No domain yet? Use Resend's test sender — it only delivers to your own signup
-address, which is fine for verifying the flow, but **real users won't receive
-anything** until a domain is verified.
+1. Go to [myaccount.google.com/security](https://myaccount.google.com/security)
+   while signed in as that account.
+2. Turn on **2-Step Verification** if it isn't already. App passwords do not
+   exist without it — there's no way around this step.
+3. Search settings for **App passwords** (or go to
+   [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)).
+4. Create one, name it `NoteMind`, copy the 16 characters.
+
+Save two values:
+
+| Variable | Value |
+|---|---|
+| `GMAIL_USER` | `notemind.ai.app@gmail.com` |
+| `GMAIL_APP_PASSWORD` | the 16 characters (spaces are fine, they're stripped) |
+
+> This is **not** your Google password. It's a separate credential that only
+> permits sending mail, and you can revoke it alone without touching the
+> account.
+
+Limits: ~500 emails/day, and mail arrives from the Gmail address. Both fine to
+start. Once you own a domain, switch to Resend (`RESEND_API_KEY` +
+`EMAIL_FROM`) for better deliverability — the code already supports it and
+prefers it automatically when configured.
 
 ---
 
-## 4. Push the code to GitHub  ·  2 min
+## 4. ~~Push the code to GitHub~~  ·  DONE
 
-Remote is already set to `github.com/Ahmadhsn1/notemind-app`.
+Already pushed to `github.com/Ahmadhsn1/notemind-app` on `main`. Verified that
+no `.env`, `CLAUDE.md` or `.claude` reached the remote.
+
+One piece is missing: `.github/workflows/ci.yml` couldn't be pushed because the
+GitHub token lacks the `workflow` scope. CI is optional and nothing else
+depends on it. To add it:
 
 ```bash
-git add -A
-git status          # confirm no .env, no CLAUDE.md, no .claude/
-git commit -m "Production hardening: security, tests, deploy config"
-git push origin main
+gh auth refresh -s workflow
+git add .github && git commit -m "Add CI workflow" && git push
 ```
-
-`.env` files, `CLAUDE.md` and `.claude/` are all gitignored — the `git status`
-check above is just to be sure.
 
 ---
 
@@ -128,7 +137,8 @@ No credit card required.
    | `CLIENT_URL` | **leave blank for now** — filled in at step 7 |
    | `GEMINI_API_KEYS` | your existing keys, comma-separated |
    | `R2_ACCOUNT_ID` etc. | all four from step 2 |
-   | `RESEND_API_KEY`, `EMAIL_FROM` | from step 3 |
+   | `GMAIL_USER` | `notemind.ai.app@gmail.com` |
+   | `GMAIL_APP_PASSWORD` | the 16-character app password from step 3 |
 
 5. Deploy. **The first deploy will fail** with
    `CLIENT_URL is required in production` — that is expected and correct. It
@@ -184,7 +194,8 @@ Then in the browser, on your Vercel URL:
 - [ ] Refresh directly on `/dashboard` — should load, not 404
       *(this proves the SPA rewrite)*
 - [ ] Log out → **Forgot password** → check your inbox
-      *(this proves Resend)*
+      *(this proves Gmail sending; the mail arrives from
+      notemind.ai.app@gmail.com)*
 
 ---
 
@@ -194,7 +205,7 @@ There is no self-serve way to become admin, on purpose.
 
 ```bash
 cd server
-node scripts/set-admin.js your@email.com
+node scripts/set-admin.js notemind.ai.app@gmail.com
 ```
 
 That runs against whatever `MONGO_URI` is in `server/.env` — so point it at
