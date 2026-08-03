@@ -11,6 +11,7 @@ function Login() {
 	const [password, setPassword] = useState('')
 	const [showPassword, setShowPassword] = useState(false)
 	const [error, setError] = useState('')
+	const [submitting, setSubmitting] = useState(false)
 	const [focusedField, setFocusedField] = useState(null)
 	const [glancing, setGlancing] = useState(false)
 	const [avoiding, setAvoiding] = useState(false)
@@ -81,8 +82,13 @@ function Login() {
 		}
 	}
 
+	// Repeated Enter presses on a slow connection otherwise fire one request
+	// each, burning the authLimiter budget (20 per 15 min) with nothing on
+	// screen indicating anything is happening.
 	const handleSubmit = async (e) => {
 		e.preventDefault()
+		if (submitting) return
+		setSubmitting(true)
 		setError('')
 		try {
 			const response = await api.post('/auth/login', {email, password})
@@ -90,6 +96,7 @@ function Login() {
 			navigate('/dashboard')
 		} catch (err) {
 			setError(err.response?.data?.message || 'Something went wrong')
+			setSubmitting(false)
 		}
 	}
 
@@ -129,8 +136,15 @@ function Login() {
 							</button>
 						</div>
 						{error && <p className="text-danger-light text-sm text-center">{error}</p>}
-						<button type="submit" className="btn-primary p-[15px] text-base mt-1.5">Login</button>
+						<button
+						type="submit"
+						disabled={submitting}
+						className="btn-primary p-[15px] text-base mt-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+					>{submitting ? 'Logging in…' : 'Login'}</button>
 					</form>
+					<p className="text-center mt-3 text-[13px]">
+						<Link to="/forgot-password" className="text-ink/50 hover:text-ink no-underline">Forgot your password?</Link>
+					</p>
 					<GoogleAuthButton />
 					<p className="text-center mt-[18px] text-sm text-ink/50">
 						Don't have an account? <Link to="/register" className="text-accent no-underline font-semibold">Register</Link>

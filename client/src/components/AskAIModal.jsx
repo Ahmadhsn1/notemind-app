@@ -206,9 +206,13 @@ function AskAIModal({isOpen, onClose, notes, onActionApplied}) {
 				)}
 
 				<form onSubmit={handleSubmit} className="flex flex-col gap-3">
+					{/* Matches MAX_QUESTION_LENGTH in server/validators/noteValidators.js
+					    — the server rejects anything longer, so stopping it here
+					    turns a 400 into a no-op keystroke. */}
 					<textarea
 						placeholder="Ask Momo about your notes..."
 						rows={2}
+						maxLength={2000}
 						value={question}
 						onChange={(e) => setQuestion(e.target.value)}
 						autoFocus

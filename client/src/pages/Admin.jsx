@@ -116,7 +116,12 @@ function NotificationRow({notification, expanded, onToggleExpand, onDelete}) {
 			</div>
 			{expanded && (
 				<div className="px-3.5 pb-2.5 flex flex-wrap gap-1.5">
-					{notification.recipients.map((r) => (
+					{/* Guarded like notification.createdBy above: a recipient whose
+					    account was since deleted is pulled out of the array
+					    server-side (services/dataCleanup.purgeUsers), so this can
+					    legitimately be empty — and an older document predating the
+					    field would otherwise crash the whole page on expand. */}
+					{(notification.recipients || []).map((r) => (
 						<span key={r._id} className={`text-[11px] py-[3px] px-2 rounded-full ${r.read ? 'bg-growth/15 text-growth' : 'bg-ink/8 text-ink/50'}`}>
 							{r.name}
 						</span>
@@ -137,6 +142,7 @@ function Admin() {
 	const [auditFilter, setAuditFilter] = useState('all')
 	const [notifications, setNotifications] = useState(null)
 	const [system, setSystem] = useState(null)
+	const [systemError, setSystemError] = useState(false)
 	const [showSendModal, setShowSendModal] = useState(false)
 	const [expandedNotifId, setExpandedNotifId] = useState(null)
 	const [loading, setLoading] = useState(true)
@@ -211,13 +217,28 @@ function Admin() {
 
 	// Fetch System data the first time that tab is opened (loadAdminData only
 	// includes it on subsequent refreshes once activeTabRef already points at
-	// 'system').
-	useEffect(() => {
-		if (activeTab === 'system' && system === null) {
-			api.get('/admin/system').then((res) => { if (mountedRef.current) setSystem(res.data) }).catch(() => {
-				if (mountedRef.current) toast.error('Could not load system status.')
+	// 'system'). The failure path has to set systemError, not just toast: the
+	// panel renders "Loading…" whenever `system` is null, so a swallowed error
+	// left an admin staring at a spinner that would never resolve.
+	// Every setState here is inside a promise callback, never synchronous in
+	// the effect body below — the mount-time call would otherwise trigger a
+	// cascading render (react-hooks/set-state-in-effect).
+	const loadSystem = () => {
+		api.get('/admin/system')
+			.then((res) => {
+				if (!mountedRef.current) return
+				setSystem(res.data)
+				setSystemError(false)
 			})
-		}
+			.catch(() => {
+				if (!mountedRef.current) return
+				setSystemError(true)
+				toast.error('Could not load system status.')
+			})
+	}
+
+	useEffect(() => {
+		if (activeTab === 'system' && system === null) loadSystem()
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- toast is stable, system checked via closure is intentional (only fetch once)
 	}, [activeTab])
 
@@ -443,6 +464,22 @@ function Admin() {
 
 			{loading ? (
 				<div className="h-[200px] flex items-center justify-center text-ink/40 text-[13px]">Loading…</div>
+			) : !stats ? (
+				/* The five /admin/* calls are one Promise.all, so a single failure
+				   leaves every one of these states null. Previously the catch only
+				   fired a toast and `finally` still cleared `loading`, so the tab
+				   content below rendered straight into `stats.totalUsers` and threw
+				   — one transient 500 took the whole page to the error boundary
+				   with no way back except a full reload. `stats` is the sentinel
+				   for "the initial load never landed"; a failed *silent* refresh
+				   keeps the last good data on screen instead. */
+				<div className="h-[200px] flex flex-col items-center justify-center gap-3 text-center">
+					<p className="text-[13px] text-ink/50">Could not load admin data.</p>
+					<button
+						onClick={() => { setLoading(true); loadAdminData() }}
+						className="py-2 px-4 rounded-[10px] bg-ink/8 border border-ink/15 text-[12.5px] font-semibold text-ink cursor-pointer transition-colors hover:bg-ink/12"
+					>Retry</button>
+				</div>
 			) : (
 				<>
 					{activeTab === 'overview' && (
@@ -678,7 +715,7 @@ function Admin() {
 						</div>
 					)}
 
-					{activeTab === 'system' && <AdminSystemPanel system={system} />}
+					{activeTab === 'system' && <AdminSystemPanel system={system} error={systemError} onRetry={loadSystem} />}
 				</>
 			)}
 

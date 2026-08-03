@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const env = require('../config/env');
 
 const ADMIN_ROOM = 'admin';
 const userRoom = (userId) => `user:${userId}`;
@@ -21,8 +22,14 @@ const authenticateSocket = async (socket, next) => {
     if (!token) return next(new Error('No token provided'));
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('role');
+    const user = await User.findById(decoded.id).select('role suspended');
     if (!user) return next(new Error('User not found'));
+    // Mirrors `protect`: a suspended account must not hold a live push
+    // channel either. Note this is still only checked at handshake — an
+    // already-open socket survives until it drops. Real-time revocation of a
+    // live connection needs a broadcast from the suspend mutation; tracked
+    // separately.
+    if (user.suspended) return next(new Error('Account suspended'));
 
     socket.data.userId = decoded.id;
     socket.data.isAdmin = user.role === 'admin';
@@ -36,11 +43,10 @@ const authenticateSocket = async (socket, next) => {
 // http.createServer(app) specifically so this can share the same port —
 // no separate server/port for websocket traffic).
 const initSocket = (httpServer) => {
-  io = new Server(httpServer, {
-    cors: {
-      origin: (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((o) => o.trim()),
-    },
-  });
+  // Same allowlist as the REST CORS config, read from one place — these were
+  // two copy-pasted expressions, so fixing one and not the other produced
+  // "REST works but live updates silently never connect".
+  io = new Server(httpServer, { cors: { origin: env.allowedOrigins } });
 
   io.use(authenticateSocket);
 
@@ -61,6 +67,15 @@ const initSocket = (httpServer) => {
 // No-ops safely if called before initSocket (e.g. from a script) or if the
 // event fires but no admin is currently connected — io.to() on an empty
 // room is a harmless no-op.
+// Closes every live connection with a proper disconnect frame before the
+// process exits. Without it a deploy dropped all clients abruptly and they
+// reconnect-stormed the replacement instance simultaneously.
+const closeSocket = async () => {
+  if (!io) return;
+  await new Promise((resolve) => io.close(resolve));
+  io = null;
+};
+
 const broadcastAdminUpdate = (type) => {
   io?.to(ADMIN_ROOM).emit('admin:update', { type, at: new Date().toISOString() });
 };
@@ -74,4 +89,4 @@ const pushNotificationToUser = (userId, notification) => {
   io?.to(userRoom(userId)).emit('notification:new', notification);
 };
 
-module.exports = { initSocket, broadcastAdminUpdate, pushNotificationToUser };
+module.exports = { initSocket, closeSocket, broadcastAdminUpdate, pushNotificationToUser };

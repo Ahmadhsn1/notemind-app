@@ -1,10 +1,11 @@
 import {useEffect, useMemo, useState} from 'react'
 import DOMPurify from 'dompurify'
-import api, {resolveUploadUrl} from '../api/axios'
+import api from '../api/axios'
 import {useToast} from '../context/ToastContext'
 import {folderColor} from '../utils/folderColor'
 import {relativeTime} from '../utils/relativeTime'
 import {legacyBodyToHtml} from '../utils/legacyBodyToHtml'
+import {withPendingImages, withSignedImages} from '../utils/noteImages'
 
 function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, onNavigateToNote, onNoteChanged, onOpenFlashcards, currentIndex, totalCount}) {
 	const [showVersions, setShowVersions] = useState(false)
@@ -100,20 +101,36 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 	// user-controlled markup rendered via dangerouslySetInnerHTML — sanitize
 	// again client-side as defense in depth against any future write path
 	// that might skip the server sanitizer.
-	const safeHtml = useMemo(() => {
+	// Phase one, synchronous: sanitize and park each /uploads/ src behind a
+	// placeholder. Images can't be resolved here because they now need a
+	// server-signed URL, and signing is a network call.
+	const pendingHtml = useMemo(() => {
 		if (!note) return ''
 		const html = note.contentHtml || legacyBodyToHtml(note.body)
-		const sanitized = DOMPurify.sanitize(html)
-		// contentHtml stores images as a relative /uploads/... path (see
-		// api/axios.js's resolveUploadUrl) — resolve to the API origin here,
-		// at the point of display, same as the editor's own image node view.
-		if (!sanitized.includes('<img')) return sanitized
-		const doc = new DOMParser().parseFromString(sanitized, 'text/html')
-		doc.querySelectorAll('img[src^="/uploads/"]').forEach((img) => {
-			img.setAttribute('src', resolveUploadUrl(img.getAttribute('src')))
-		})
-		return doc.body.innerHTML
+		return withPendingImages(DOMPurify.sanitize(html))
 	}, [note])
+
+	// Phase two: swap in signed URLs once they arrive. `signedHtml` is cleared
+	// during render whenever the note changes (the same "adjust state when a
+	// prop changes" pattern used for versionsForNoteId above) rather than in
+	// the effect, so the displayed HTML is derived and there's no cascading
+	// render. `ignore` stops a slow signing response for a previously-viewed
+	// note from overwriting the one now on screen.
+	const [signedHtml, setSignedHtml] = useState(null)
+	const [signedForHtml, setSignedForHtml] = useState(pendingHtml)
+	if (signedForHtml !== pendingHtml) {
+		setSignedForHtml(pendingHtml)
+		setSignedHtml(null)
+	}
+	const safeHtml = signedHtml ?? pendingHtml
+
+	useEffect(() => {
+		let ignore = false
+		withSignedImages(pendingHtml).then((resolved) => {
+			if (!ignore) setSignedHtml(resolved)
+		})
+		return () => { ignore = true }
+	}, [pendingHtml])
 
 	// Outgoing: notes this one references via [[wikilink]] (note.links, IDs
 	// only — resolved to title/existence here since a linked note could since

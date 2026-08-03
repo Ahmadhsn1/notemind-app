@@ -1,13 +1,13 @@
-const User = require('../models/User');
 const HttpError = require('../utils/HttpError');
 
-// Runs after `protect` — the JWT only carries { id }, not role (roles can
-// change after a token was issued, so it's looked up fresh rather than
-// trusted from the token). Admin routes are low-traffic, so the extra query
-// per request is a non-issue.
-const requireAdmin = async (req, res, next) => {
-  const user = await User.findById(req.user.id).select('role');
-  if (!user || user.role !== 'admin') {
+// Runs after `protect`, which now loads the user on every authenticated
+// request (to enforce account-exists/not-suspended) and attaches the role it
+// read. Roles can change after a token is issued — the JWT carries only
+// { id }, never a role — so this still never trusts the token; it just reuses
+// the lookup `protect` already performed instead of issuing a second
+// identical query per admin request.
+const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== 'admin') {
     throw new HttpError(403, 'Admin access required');
   }
   next();

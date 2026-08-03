@@ -1,6 +1,7 @@
 import {useState, useEffect} from 'react'
 import {useLocation, useNavigate} from 'react-router-dom'
 import api from '../api/axios'
+import {fetchAllNotes, NOTES_PAGE_SIZE, MAX_NOTE_PAGES} from '../api/notes'
 import {useAuth} from '../context/AuthContext'
 import {useToast} from '../context/ToastContext'
 import NoteCard from '../components/NoteCard'
@@ -71,22 +72,30 @@ function Dashboard() {
 	// null = closed; 'due' = global due-today queue; a note id = that note's
 	// full deck (opened right after generating from NoteViewModal).
 	const [flashcardReviewTarget, setFlashcardReviewTarget] = useState(null)
+	// Gates the note form's submit path so a double-click can't create two
+	// identical notes (or fire two PUTs, each writing its own version snapshot).
+	const [isSaving, setIsSaving] = useState(false)
+	// True only past the fan-out ceiling in api/notes.js. Surfaced rather than
+	// hidden, because everything derived from the notes array (backlinks, the
+	// graph, folder counts) is incomplete when it's set.
+	const [notesTruncated, setNotesTruncated] = useState(false)
 
 	const {user, logout} = useAuth()
 	const toast = useToast()
 	const location = useLocation()
 	const navigate = useNavigate()
 
-	// GET /notes is now paginated server-side (bounded query instead of an
-	// unbounded scan). No page/next-page UI yet — this fetches the max page
-	// size, which covers the full note list for realistic personal-scale use;
-	// paging controls are a natural follow-up once someone actually has more
-	// notes than that. `view` (active/archived/trash, Phase 4) is read from
-	// closure so a refetch after any mutation always reflects whichever list
-	// is currently open.
+	// GET /notes is paginated server-side (bounded query rather than an
+	// unbounded scan); fetchAllNotes follows that pagination to completion.
+	// It must fetch ALL of them, not just the first page — backlinks, the
+	// graph, folder counts and the command palette are all derived from this
+	// array, so a partial list makes them wrong rather than merely short.
+	// `view` (active/archived/trash) is read from closure so a refetch after
+	// any mutation always reflects whichever list is currently open.
 	const fetchNotes = async () => {
-		const response = await api.get('/notes', {params: {limit: 200, view}})
-		setNotes(response.data.notes)
+		const {notes: allNotes, truncated} = await fetchAllNotes({view})
+		setNotes(allNotes)
+		setNotesTruncated(truncated)
 	}
 
 	// Drives the loading/error UI (unlike the silent `fetchNotes` refetch used
@@ -274,13 +283,24 @@ function Dashboard() {
 			resetForm()
 			await fetchNotes()
 			toast.success(editingId ? 'Note saved.' : 'Note created.')
-		} catch {
-			toast.error('Could not save the note. Try again.')
+		} catch (err) {
+			// The server returns a field->message map for validation failures
+			// (middleware/validate.js). Collapsing that into one generic string
+			// meant a blank or over-long title just said "Could not save the
+			// note", and retrying failed identically with no hint why.
+			const fieldErrors = err?.response?.data?.errors
+			const firstFieldError = fieldErrors && Object.values(fieldErrors)[0]
+			toast.error(firstFieldError || err?.response?.data?.message || 'Could not save the note. Try again.')
 		}
 	}
 
 	const handleSubmit = async (e) => {
 		e.preventDefault()
+		// Guards the whole submit path, including the freshness check below —
+		// that extra GET widens the window in which a second click could fire
+		// a duplicate create/update.
+		if (isSaving) return
+		setIsSaving(true)
 
 		const noteData = {
 			title,
@@ -290,24 +310,30 @@ function Dashboard() {
 			reminderAt: reminderAt ? new Date(reminderAt).toISOString() : null,
 		}
 
-		// Optimistic-concurrency check (Phase 7): re-fetch the note's current
-		// updatedAt right before saving and compare it to the value captured
-		// when editing began. A mismatch means it changed elsewhere (another
-		// tab, another device) since — warn before silently overwriting that.
-		if (editingId && editingUpdatedAt) {
-			try {
-				const latest = await api.get(`/notes/${editingId}`)
-				if (latest.data.updatedAt !== editingUpdatedAt) {
-					setSaveConflict(noteData)
-					return
+		try {
+			// Optimistic-concurrency check (Phase 7): re-fetch the note's current
+			// updatedAt right before saving and compare it to the value captured
+			// when editing began. A mismatch means it changed elsewhere (another
+			// tab, another device) since — warn before silently overwriting that.
+			if (editingId && editingUpdatedAt) {
+				try {
+					const latest = await api.get(`/notes/${editingId}`)
+					if (latest.data.updatedAt !== editingUpdatedAt) {
+						setSaveConflict(noteData)
+						return
+					}
+				} catch {
+					// Freshness check itself failed (e.g. offline) — fall through and
+					// let the save attempt itself surface the real error.
 				}
-			} catch {
-				// Freshness check itself failed (e.g. offline) — fall through and
-				// let the save attempt itself surface the real error.
 			}
-		}
 
-		await saveNote(noteData)
+			await saveNote(noteData)
+		} finally {
+			// Also covers the conflict branch's early return, which hands off to
+			// handleConfirmOverwrite via ConfirmModal (itself guarded).
+			setIsSaving(false)
+		}
 	}
 
 	const handleConfirmOverwrite = async () => {
@@ -463,6 +489,17 @@ function Dashboard() {
 
 				{view === 'active' && <DigestWidget onViewNote={handleViewNote} />}
 
+				{/* Only ever shown past api/notes.js's fan-out ceiling. Everything
+				    derived from the notes array is incomplete at that point, so
+				    saying so is better than quietly showing a partial graph and
+				    partial backlinks. */}
+				{notesTruncated && !notesLoading && (
+					<div className="rounded-[12px] border border-ink/15 bg-ink/6 px-4 py-3 text-[12.5px] text-ink/60">
+						Showing your {(NOTES_PAGE_SIZE * MAX_NOTE_PAGES).toLocaleString()} most recent notes. Older ones aren&apos;t
+						loaded, so backlinks and the graph may be incomplete.
+					</div>
+				)}
+
 				{notesLoading ? (
 					<div className={`grid gap-4 ${viewMode === 'list' ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(268px,1fr))]'}`}>
 						{[...Array(6)].map((_, i) => (
@@ -590,6 +627,7 @@ function Dashboard() {
 				onReminderChange={setReminderAt}
 				onSubmit={handleSubmit}
 				onClose={handleCloseModal}
+				isSaving={isSaving}
 			/>
 
 			<AskAIModal

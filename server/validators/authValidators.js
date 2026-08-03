@@ -32,6 +32,15 @@ const deleteAccountSchema = z.object({
   password: z.string(),
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required').max(200),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters').max(200),
+});
+
 const googleAuthSchema = z.object({
   credential: z.string().min(1, 'Missing Google credential'),
 });
@@ -43,4 +52,6 @@ module.exports = {
   changePasswordSchema,
   deleteAccountSchema,
   googleAuthSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 };

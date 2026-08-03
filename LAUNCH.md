@@ -1,0 +1,250 @@
+# Launch checklist
+
+Ordered list of the things a human has to do. Everything here needs an account,
+a browser, or a secret — none of it can be done from the codebase.
+
+`DEPLOY.md` is the reference doc (what each variable means, how the pieces fit).
+This is the do-list. Work top to bottom; later steps depend on earlier ones.
+
+Total time: roughly an hour, most of it waiting for deploys.
+
+---
+
+## 0. Generate a new JWT_SECRET  ·  2 min
+
+The current one is 30 characters. Production requires 32+ and the server will
+refuse to boot below that — deliberately, because this single value protects
+every session in the app.
+
+```bash
+openssl rand -base64 48
+```
+
+Save the output. You'll paste it into Render in step 5. Also put it in
+`server/.env` so local dev matches:
+
+```bash
+# edit server/.env, replace the JWT_SECRET= line
+```
+
+> Changing this signs out every existing user. Do it **now**, before you have
+> real users, not after.
+
+---
+
+## 1. MongoDB Atlas — the database  ·  10 min
+
+1. Sign up at [mongodb.com/atlas](https://www.mongodb.com/atlas) → **Create** →
+   **M0 Free**.
+2. **Database Access** → Add New Database User → username + password →
+   **Read and write to any database**.
+3. **Network Access** → Add IP Address → **Allow access from anywhere**
+   (`0.0.0.0/0`). Render's free tier has no fixed outbound IP, so a narrower
+   rule will just block your own API.
+4. **Connect** → **Drivers** → copy the connection string. It looks like
+   `mongodb+srv://user:PASSWORD@cluster.xxxxx.mongodb.net/notemind`
+   — replace `PASSWORD` with the one from step 2, and make sure a database
+   name (`/notemind`) is on the end.
+
+Save it. This is `MONGO_URI`.
+
+> M0 has **no automated backups**. Take a `mongodump` before anything risky.
+
+---
+
+## 2. Cloudflare R2 — image storage  ·  10 min
+
+Required in production. The server refuses to boot without it, because
+local-disk uploads are wiped on every deploy — every image every user ever
+pasted would turn into a broken box with no way to recover it.
+
+1. Sign up at [cloudflare.com](https://dash.cloudflare.com) → **R2** →
+   **Create bucket** → name it `notemind-uploads`.
+   (R2 asks for a card to *enable* it, but the free tier — 10 GB, zero egress —
+   is not charged.)
+2. **R2** → **Manage API tokens** → **Create API token** → permission
+   **Object Read & Write**, scoped to that bucket.
+3. Copy all four values:
+   - Account ID (top right of the R2 page)
+   - Access Key ID
+   - Secret Access Key
+   - Bucket name
+
+Save them. These are `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
+
+---
+
+## 3. Resend — password reset emails  ·  10 min
+
+Without this, a user who forgets their password is locked out permanently and
+you have to reset it for them by hand.
+
+1. Sign up at [resend.com](https://resend.com) (free: 3,000 emails/month).
+2. **API Keys** → **Create API Key** → copy it. This is `RESEND_API_KEY`.
+3. **Domains** → add and verify your domain (DNS records), then set
+   `EMAIL_FROM` to something like `NoteMind <noreply@yourdomain.com>`.
+
+No domain yet? Use Resend's test sender — it only delivers to your own signup
+address, which is fine for verifying the flow, but **real users won't receive
+anything** until a domain is verified.
+
+---
+
+## 4. Push the code to GitHub  ·  2 min
+
+Remote is already set to `github.com/Ahmadhsn1/notemind-app`.
+
+```bash
+git add -A
+git status          # confirm no .env, no CLAUDE.md, no .claude/
+git commit -m "Production hardening: security, tests, deploy config"
+git push origin main
+```
+
+`.env` files, `CLAUDE.md` and `.claude/` are all gitignored — the `git status`
+check above is just to be sure.
+
+---
+
+## 5. Deploy the API to Render  ·  15 min
+
+No credit card required.
+
+1. [render.com](https://render.com) → sign up with GitHub.
+2. **New** → **Web Service** → pick the `notemind-app` repo.
+3. Settings:
+   - **Root Directory**: `server`
+   - **Runtime**: Docker
+   - **Instance Type**: Free
+   - **Health Check Path**: `/healthz`
+4. **Environment** → add these:
+
+   | Key | Value |
+   |---|---|
+   | `NODE_ENV` | `production` |
+   | `MONGO_URI` | from step 1 |
+   | `JWT_SECRET` | from step 0 |
+   | `CLIENT_URL` | **leave blank for now** — filled in at step 7 |
+   | `GEMINI_API_KEYS` | your existing keys, comma-separated |
+   | `R2_ACCOUNT_ID` etc. | all four from step 2 |
+   | `RESEND_API_KEY`, `EMAIL_FROM` | from step 3 |
+
+5. Deploy. **The first deploy will fail** with
+   `CLIENT_URL is required in production` — that is expected and correct. It
+   gets fixed in step 7.
+6. Copy your API URL: `https://<something>.onrender.com`
+
+---
+
+## 6. Deploy the client to Vercel  ·  10 min
+
+1. [vercel.com](https://vercel.com) → sign up with GitHub → **Add New** →
+   **Project** → import `notemind-app`.
+2. **Root Directory**: `client`. Leave everything else — it's already declared
+   in `client/vercel.json`.
+3. **Environment Variables**:
+
+   | Key | Value |
+   |---|---|
+   | `VITE_API_URL` | `https://<your-render-url>.onrender.com/api` |
+
+   The `/api` on the end matters. Without it every request 404s.
+4. Deploy, then copy your Vercel URL: `https://<something>.vercel.app`
+
+---
+
+## 7. Connect the two  ·  5 min
+
+The API needs to know the client's origin, and that origin didn't exist until
+step 6 — so this is a second pass, not a mistake.
+
+1. Render → your service → **Environment** → set
+   `CLIENT_URL` = `https://<your-vercel-url>.vercel.app`
+   (no trailing slash).
+2. **Manual Deploy** → **Deploy latest commit**.
+
+This deploy should succeed.
+
+---
+
+## 8. Verify  ·  5 min
+
+```bash
+curl https://<your-render-url>.onrender.com/healthz
+# expect: {"status":"ok","db":"connected","uptime":...}
+```
+
+Then in the browser, on your Vercel URL:
+
+- [ ] Register an account
+- [ ] Create a note
+- [ ] Paste an image into a note, reload — it should still show
+      *(this proves R2 + signed URLs)*
+- [ ] Refresh directly on `/dashboard` — should load, not 404
+      *(this proves the SPA rewrite)*
+- [ ] Log out → **Forgot password** → check your inbox
+      *(this proves Resend)*
+
+---
+
+## 9. Make yourself admin  ·  2 min
+
+There is no self-serve way to become admin, on purpose.
+
+```bash
+cd server
+node scripts/set-admin.js your@email.com
+```
+
+That runs against whatever `MONGO_URI` is in `server/.env` — so point it at
+Atlas (step 1) first, not your local database.
+
+Then open `/admin/login` on your Vercel URL. The **Live** badge should say
+Live, not Offline. Offline means `CLIENT_URL` doesn't exactly match your Vercel
+origin.
+
+---
+
+## 10. Keep the API warm  ·  5 min
+
+Render's free tier sleeps after 15 minutes idle; the next request then takes
+~50 seconds. Ping `/healthz` every 14 minutes to prevent it.
+
+Easiest: [cron-job.org](https://cron-job.org) (free, no card) → new cron job →
+URL `https://<your-render-url>.onrender.com/healthz`, every 14 minutes.
+
+Or commit `.github/workflows/keep-warm.yml` — the YAML is in `DEPLOY.md`.
+
+---
+
+## Optional: Google Sign-In
+
+Skip unless you want it. Needs both halves or it does nothing.
+
+1. [Google Cloud Console](https://console.cloud.google.com) → **APIs &
+   Services** → **Credentials** → **Create OAuth client ID** → Web application.
+2. **Authorized JavaScript origins**: your Vercel URL.
+3. Set the same Client ID in **both** places:
+   - Render: `GOOGLE_CLIENT_ID`
+   - Vercel: `VITE_GOOGLE_CLIENT_ID`
+4. Redeploy both.
+
+Existing password users connect Google from **Account → Sign-in methods** —
+signing in with Google won't adopt an existing account by email, which is
+deliberate (it was an account-hijacking hole).
+
+---
+
+## After launch
+
+Not blockers, but the next things worth doing:
+
+- **Back up the database** before any schema change. M0 has no automated backups.
+- **Narrow the CSP.** `client/vercel.json` has `connect-src https: wss:` because
+  the API origin is a build-time variable. Now that it's fixed, set it to your
+  exact Render origin.
+- **Watch your Gemini spend.** Capped at 200 AI calls per user per day
+  (`DAILY_AI_CALL_LIMIT`); lower it if the free tier gets tight.
+- **Add Sentry** (`SENTRY_DSN`) so production errors reach you instead of
+  scrolling past in Render's log viewer.

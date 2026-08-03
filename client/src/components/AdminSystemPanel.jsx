@@ -3,7 +3,22 @@
 // doesn't expose a stable public API to read live per-IP hit counts back
 // out of its in-memory store, so there is deliberately no "requests
 // remaining" figure here — that would have to be faked.
-function AdminSystemPanel({system}) {
+function AdminSystemPanel({system, error, onRetry}) {
+	// A failed fetch is distinct from one still in flight — without this the
+	// panel showed "Loading…" indefinitely after an error, with the only
+	// signal being a toast that had already disappeared.
+	if (error && !system) {
+		return (
+			<div className="h-[160px] flex flex-col items-center justify-center gap-3 text-center">
+				<p className="text-[13px] text-ink/50">Could not load system status.</p>
+				<button
+					onClick={onRetry}
+					className="py-2 px-4 rounded-[10px] bg-ink/8 border border-ink/15 text-[12.5px] font-semibold text-ink cursor-pointer transition-colors hover:bg-ink/12"
+				>Retry</button>
+			</div>
+		)
+	}
+
 	if (!system) {
 		return <div className="h-[160px] flex items-center justify-center text-ink/40 text-[13px]">Loading…</div>
 	}

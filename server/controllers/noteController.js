@@ -1,13 +1,14 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
-const fs = require('fs/promises');
-const path = require('path');
 const Note = require('../models/Note');
 const NoteVersion = require('../models/NoteVersion');
 const { summarizeAndTag, streamAnswerFromNotes, STREAM_META_DELIMITER, stripJsonFences, generateTitle, assistWriting, embedText, cosineSimilarity, generateWeeklyDigest } = require('../services/aiService');
 const { sanitizeNoteHtml, htmlToPlainText, HtmlTooLargeError } = require('../utils/htmlSanitizer');
 const { buildUserNotesExport } = require('../services/noteExport');
-const { uploadsDir, urlFor } = require('../services/uploadStorage');
+const { writeFile, isSafeFilename: isSafeUploadFilename } = require('../services/uploadStorage');
+const { signFilename, ownerIdOf, DEFAULT_TTL_SECONDS: IMAGE_URL_TTL_SECONDS } = require('../services/imageSignature');
+const { purgeNotes } = require('../services/dataCleanup');
+const { tryConsumeAiQuota } = require('../middleware/aiQuota');
 const { broadcastAdminUpdate } = require('../services/socket');
 const HttpError = require('../utils/HttpError');
 
@@ -49,7 +50,7 @@ const extractLinkedNoteIds = (html) => {
 // embedding on every save that touches content — best-effort: a failed
 // Gemini call here degrades askNotes/search back to keyword matching for
 // this note rather than blocking the save.
-const deriveContentFields = async (payload) => {
+const deriveContentFields = async (payload, userId) => {
   let fields;
   if (payload.contentHtml === undefined) {
     if (payload.body === undefined) return {};
@@ -64,16 +65,38 @@ const deriveContentFields = async (payload) => {
     }
   }
 
-  try {
-    fields.embedding = await embedText(fields.body);
-  } catch {
-    // best-effort, see comment above
+  // Every note save costs a real, billed Gemini embedding call — these are
+  // the highest-frequency writes in the app and used to be the only AI-calling
+  // routes with no spend control at all. The quota is consumed softly: over
+  // budget, the note still saves and simply keeps whatever embedding it had,
+  // degrading to keyword matching in ask/search exactly as it already does
+  // when Gemini is unreachable. Blocking the save itself would mean "you've
+  // used your AI quota, so you can't write notes."
+  if (await tryConsumeAiQuota(userId)) {
+    try {
+      fields.embedding = await embedText(fields.body);
+    } catch {
+      // best-effort, see comment above
+    }
   }
 
   return fields;
 };
 
 const TOP_NOTES_LIMIT = 6;
+
+// The only notes any AI feature is allowed to retrieve: a user's own, and
+// only those still live in their view. A note the user trashed or archived is
+// out of scope for answers, sources and search hits alike.
+const AI_RETRIEVAL_SCOPE = (userId) => ({ user: userId, archivedAt: null, deletedAt: null });
+
+// Hard ceiling on how many notes a single AI request will pull into memory.
+// Each carries a 768-float embedding and the cosine scan runs in-process on
+// the event loop, so an unbounded fetch let one power user's request stall
+// every other request on the instance. Beyond this the retrieval quality
+// ceiling is set by TOP_NOTES_LIMIT anyway; lifting it properly needs a
+// vector index rather than a bigger scan.
+const AI_RETRIEVAL_MAX_NOTES = 500;
 
 // Keyword-overlap fallback — used whenever semantic scoring isn't available
 // (query embedding call failed, or a given note has no stored embedding yet,
@@ -130,9 +153,13 @@ const TRASH_RETENTION_DAYS = 30;
 // right before a trash listing is served, rather than via a cron/scheduler
 // (no such infra exists in this app) — cheap and correct enough at this
 // scale since it only runs when someone actually opens the Trash view.
+// Routed through purgeNotes because this used to be a bare Note.deleteMany:
+// the note vanished but its versions, flashcards and uploaded images were all
+// left behind, making the automatic path the leakiest of the six.
 const purgeExpiredTrash = async (userId) => {
   const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  await Note.deleteMany({ user: userId, deletedAt: { $lt: cutoff } });
+  const expiredIds = await Note.find({ user: userId, deletedAt: { $lt: cutoff } }).distinct('_id');
+  await purgeNotes(expiredIds);
 };
 
 // ?view=active (default) | archived | trash — a note is only ever in one of
@@ -146,7 +173,13 @@ const VIEW_FILTERS = {
 const getNotes = async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const limit = Math.min(MAX_PAGE_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_LIMIT));
-  const view = VIEW_FILTERS[req.query.view] ? req.query.view : 'active';
+  // Object.hasOwn, not a truthiness check on the lookup: VIEW_FILTERS is a
+  // plain object, so `?view=constructor` (or toString/valueOf/__proto__)
+  // resolved truthy, passed the guard, and then spread to nothing — leaving
+  // filter = { user } and returning active, archived AND trashed notes in one
+  // response, bypassing the three-state model entirely.
+  const requestedView = typeof req.query.view === 'string' ? req.query.view : '';
+  const view = Object.hasOwn(VIEW_FILTERS, requestedView) ? requestedView : 'active';
 
   if (view === 'trash') await purgeExpiredTrash(req.user.id);
 
@@ -172,7 +205,7 @@ const createNote = async (req, res) => {
   const note = await Note.create({
     user: req.user.id,
     title,
-    ...(await deriveContentFields(req.body)),
+    ...(await deriveContentFields(req.body, req.user.id)),
     tags: normalizeTags(tags),
     folder: normalizeFolder(folder),
     ...(reminderAt !== undefined && { reminderAt }),
@@ -211,7 +244,7 @@ const updateNote = async (req, res) => {
 
   const updates = {};
   if (req.body.title !== undefined) updates.title = req.body.title;
-  Object.assign(updates, await deriveContentFields(req.body));
+  Object.assign(updates, await deriveContentFields(req.body, req.user.id));
   if (req.body.tags !== undefined) updates.tags = normalizeTags(req.body.tags);
   if (req.body.folder !== undefined) updates.folder = normalizeFolder(req.body.folder);
   if (req.body.reminderAt !== undefined) updates.reminderAt = req.body.reminderAt;
@@ -223,6 +256,7 @@ const updateNote = async (req, res) => {
   const updatedNote = await Note.findByIdAndUpdate(req.params.id, updates, {
     new: true,
   });
+  if (!updatedNote) throw new HttpError(404, 'Note not found');
 
   res.status(200).json(updatedNote);
 };
@@ -237,41 +271,31 @@ const deleteNote = async (req, res) => {
   res.status(200).json({ message: 'Note moved to trash' });
 };
 
+// findByIdAndUpdate returns null if the note was deleted between the
+// ownership load above and this write (two tabs, or a concurrent permanent
+// delete). Without this guard the endpoint answered 200 with a null body
+// instead of 404 — same pattern applied to every load-then-update below.
 const restoreNote = async (req, res) => {
   await loadOwnedNote(req.params.id, req.user.id, 'restore');
 
   const note = await Note.findByIdAndUpdate(req.params.id, { deletedAt: null }, { new: true });
+  if (!note) throw new HttpError(404, 'Note not found');
   res.status(200).json(note);
 };
 
 // Hard delete — only reachable from Trash (the note must already be
 // soft-deleted), so a user can't accidentally skip the trash/undo step from
-// the main note list.
-// Best-effort — scans for /uploads/<generated-filename> references in the
-// note's own contentHtml and unlinks them. Known gap (accepted for v1):
-// removing just an image node from a note that otherwise survives does NOT
-// clean up that file, only a full note delete does — an orphan from that
-// path just sits in server/uploads/ unreferenced.
-const deleteOrphanedImages = async (contentHtml) => {
-  if (!contentHtml) return;
-  const pattern = /\/uploads\/([A-Za-z0-9_-]+\.(?:png|jpe?g|gif|webp))/g;
-  let match;
-  while ((match = pattern.exec(contentHtml))) {
-    await fs.unlink(path.join(uploadsDir, match[1])).catch(() => {});
-  }
-};
-
+// the main note list. purgeNotes owns the cascade (versions, flashcards,
+// resurface refs, backlinks, and reference-counted image cleanup); this used
+// to run its own partial version that missed flashcards entirely, leaving the
+// user being quizzed on a note they had destroyed.
 const permanentlyDeleteNote = async (req, res) => {
   const note = await loadOwnedNote(req.params.id, req.user.id, 'permanently delete');
   if (!note.deletedAt) {
     throw new HttpError(400, 'Move the note to trash before deleting it permanently');
   }
 
-  await Promise.all([
-    Note.findByIdAndDelete(req.params.id),
-    NoteVersion.deleteMany({ note: req.params.id }),
-    deleteOrphanedImages(note.contentHtml),
-  ]);
+  await purgeNotes([note._id]);
   broadcastAdminUpdate('note');
   res.status(200).json({ message: 'Note permanently deleted' });
 };
@@ -287,14 +311,28 @@ const togglePinNote = async (req, res) => {
   res.status(200).json(note);
 };
 
+// Archived and trashed are mutually exclusive (see models/Note.js) — that
+// invariant used to be enforced on one side only: deleteNote cleared
+// archivedAt, but this cleared nothing, so archiving an already-trashed note
+// left BOTH fields set. Such a note is excluded from the `active` view (needs
+// both null) *and* the `archived` view (needs deletedAt null), so it appeared
+// only in Trash — and purgeExpiredTrash then hard-deleted it 30 days later,
+// even though the user had pressed Archive. Rejecting the transition outright
+// (rather than silently clearing deletedAt) matches togglePinNote's behavior
+// for the same situation and keeps "restore from trash" an explicit step.
+const archivedTrashedNoteError = () =>
+  new HttpError(400, 'Restore the note from trash before archiving it');
+
 const archiveNote = async (req, res) => {
-  await loadOwnedNote(req.params.id, req.user.id, 'archive');
+  const existing = await loadOwnedNote(req.params.id, req.user.id, 'archive');
+  if (existing.deletedAt) throw archivedTrashedNoteError();
 
   const note = await Note.findByIdAndUpdate(
     req.params.id,
     { archivedAt: new Date(), pinned: false },
     { new: true }
   );
+  if (!note) throw new HttpError(404, 'Note not found');
   res.status(200).json(note);
 };
 
@@ -302,6 +340,7 @@ const unarchiveNote = async (req, res) => {
   await loadOwnedNote(req.params.id, req.user.id, 'unarchive');
 
   const note = await Note.findByIdAndUpdate(req.params.id, { archivedAt: null }, { new: true });
+  if (!note) throw new HttpError(404, 'Note not found');
   res.status(200).json(note);
 };
 
@@ -330,7 +369,7 @@ const restoreNoteVersion = async (req, res) => {
   const payload = version.contentHtml && version.contentHtml.trim() !== ''
     ? { contentHtml: version.contentHtml }
     : { body: version.body };
-  Object.assign(note, await deriveContentFields(payload));
+  Object.assign(note, await deriveContentFields(payload, req.user.id));
   await note.save();
 
   res.status(200).json(note);
@@ -415,7 +454,15 @@ const askNotes = async (req, res) => {
     throw new HttpError(400, 'Question is required');
   }
 
-  const notes = await Note.find({ user: req.user.id }).select('+embedding');
+  // AI_RETRIEVAL_SCOPE, not just `{ user }`: this previously filtered only on
+  // "has a non-empty body", so trashed and archived notes were fed straight
+  // into the prompt and listed back in `sources`. A user could delete a note
+  // containing something sensitive and have the assistant quote it at them.
+  // The archived/deleted filter was already being applied to the note *index*
+  // below — just never to the notes actually retrieved.
+  const notes = await Note.find(AI_RETRIEVAL_SCOPE(req.user.id))
+    .select('+embedding')
+    .limit(AI_RETRIEVAL_MAX_NOTES);
   const usableNotes = notes.filter((note) => note.body && note.body.trim() !== '');
 
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -536,7 +583,12 @@ const searchNotes = async (req, res) => {
     return res.status(200).json({ noteIds: [] });
   }
 
-  const notes = await Note.find({ user: req.user.id }).select('+embedding');
+  // Same scope as askNotes — searching must not surface notes the user has
+  // trashed or archived out of their own view.
+  const notes = await Note.find(AI_RETRIEVAL_SCOPE(req.user.id))
+    .select('_id embedding')
+    .limit(AI_RETRIEVAL_MAX_NOTES)
+    .lean();
   const noteIds = notes
     .filter((n) => n.embedding?.length)
     .map((n) => ({ id: n._id, score: cosineSimilarity(queryEmbedding, n.embedding) }))
@@ -783,9 +835,38 @@ const uploadImage = async (req, res) => {
   // the generated name is the only thing sanitizeNoteHtml's exclusiveFilter
   // regex will ever allow back into a note's contentHtml.
   const filename = `${req.user.id}-${crypto.randomUUID()}.${ext}`;
-  await fs.writeFile(path.join(uploadsDir, filename), req.file.buffer);
+  const url = await writeFile(filename, req.file.buffer);
 
-  res.status(201).json({ url: urlFor(filename) });
+  res.status(201).json({ url });
+};
+
+// Mints short-lived signed URLs for note images. This is the protected half
+// of the image-access story: /uploads itself can't require a bearer token
+// (an <img> tag can't send one), so authorisation happens here instead —
+// a caller can only obtain a signature for a file they own, and the
+// signature expires within the hour.
+//
+// Batched because a note can reference many images and a request each would
+// be a round trip per image on every note open.
+const MAX_SIGN_BATCH = 50;
+
+const signImageUrls = async (req, res) => {
+  const filenames = Array.isArray(req.body.filenames) ? req.body.filenames.slice(0, MAX_SIGN_BATCH) : [];
+
+  const signed = {};
+  for (const filename of filenames) {
+    // Ownership is the whole point of this endpoint — the filename prefix is
+    // the owner's id (see uploadImage's naming), so a request for someone
+    // else's file is simply omitted from the response rather than erroring,
+    // which keeps one bad reference in a note from breaking the rest.
+    if (typeof filename !== 'string' || !isSafeUploadFilename(filename)) continue;
+    if (ownerIdOf(filename) !== req.user.id) continue;
+
+    const { exp, sig } = signFilename(filename);
+    signed[filename] = `/uploads/${filename}?exp=${exp}&sig=${sig}`;
+  }
+
+  res.status(200).json({ signed, expiresIn: IMAGE_URL_TTL_SECONDS });
 };
 
 // A real backup, not just "the current view" — includes archived/trashed notes
@@ -821,4 +902,5 @@ module.exports = {
   exportNotesJson,
   exportNotesMarkdown,
   uploadImage,
+  signImageUrls,
 };

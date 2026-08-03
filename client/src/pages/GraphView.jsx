@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState} from 'react'
 import {Link, useNavigate} from 'react-router-dom'
 import {forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide} from 'd3-force'
-import api from '../api/axios'
+import {fetchAllNotes} from '../api/notes'
 import {useToast} from '../context/ToastContext'
 import {folderColor} from '../utils/folderColor'
 
@@ -64,6 +64,7 @@ function layoutGraph(notes) {
 function GraphView() {
 	const [notes, setNotes] = useState([])
 	const [loading, setLoading] = useState(true)
+	const [loadFailed, setLoadFailed] = useState(false)
 	const [hoveredId, setHoveredId] = useState(null)
 	const navigate = useNavigate()
 	const toast = useToast()
@@ -72,10 +73,19 @@ function GraphView() {
 		let ignore = false
 		;(async () => {
 			try {
-				const response = await api.get('/notes', {params: {limit: 200}})
-				if (!ignore) setNotes(response.data.notes)
+				// Must be every note, not the first page: an edge is only drawn
+				// when both endpoints are present, so a truncated fetch silently
+				// erases links rather than just hiding distant nodes.
+				const {notes: allNotes} = await fetchAllNotes()
+				if (!ignore) setNotes(allNotes)
 			} catch {
-				if (!ignore) toast.error('Could not load the graph.')
+				// Also sets loadFailed — without it `notes` stays [] and the
+				// render below shows "No notes yet", which is a factually wrong
+				// message for a network failure and offers no way to retry.
+				if (!ignore) {
+					setLoadFailed(true)
+					toast.error('Could not load the graph.')
+				}
 			} finally {
 				if (!ignore) setLoading(false)
 			}
@@ -142,6 +152,14 @@ function GraphView() {
 			<div className="rounded-[16px] border border-ink/12 bg-ink/4 overflow-hidden">
 				{loading ? (
 					<div className="h-[420px] flex items-center justify-center text-ink/40 text-[13px]">Loading graph…</div>
+				) : loadFailed ? (
+					<div className="h-[420px] flex flex-col items-center justify-center gap-3 text-center">
+						<p className="text-[13px] text-ink/50">Could not load the graph.</p>
+						<button
+							onClick={() => window.location.reload()}
+							className="py-2 px-4 rounded-[10px] bg-ink/8 border border-ink/15 text-[12.5px] font-semibold text-ink cursor-pointer transition-colors hover:bg-ink/12"
+						>Retry</button>
+					</div>
 				) : notes.length === 0 ? (
 					<div className="h-[420px] flex items-center justify-center text-ink/40 text-[13px]">No notes yet.</div>
 				) : nodes.length === 0 ? (

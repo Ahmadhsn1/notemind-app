@@ -47,6 +47,16 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // Set whenever the password changes through a path that should end other
+  // sessions (currently the emailed reset flow). `protect` rejects any token
+  // issued before this timestamp, which is the app's only session-revocation
+  // mechanism — JWTs are otherwise stateless and valid for their full 7 days
+  // with no denylist. Null for accounts whose password has never been reset,
+  // which is the correct "no revocation point" default.
+  passwordChangedAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

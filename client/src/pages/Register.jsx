@@ -12,6 +12,7 @@ function Register() {
 	const [password, setPassword] = useState('')
 	const [showPassword, setShowPassword] = useState(false)
 	const [error, setError] = useState('')
+	const [submitting, setSubmitting] = useState(false)
 	const [focusedField, setFocusedField] = useState(null)
 	const [glancing, setGlancing] = useState(false)
 	const [avoiding, setAvoiding] = useState(false)
@@ -82,8 +83,14 @@ function Register() {
 		}
 	}
 
+	// Without this guard a double-submit sent two POST /auth/register calls:
+	// the first created the account and navigated away, the second came back
+	// with "User already exists" — an error shown for a registration that had
+	// just succeeded.
 	const handleSubmit = async (e) => {
 		e.preventDefault()
+		if (submitting) return
+		setSubmitting(true)
 		setError('')
 		try {
 			const response = await api.post('/auth/register', {name, email, password})
@@ -91,6 +98,7 @@ function Register() {
 			navigate('/dashboard')
 		} catch (err) {
 			setError(err.response?.data?.message || 'Something went wrong')
+			setSubmitting(false)
 		}
 	}
 
@@ -139,7 +147,11 @@ function Register() {
 							</button>
 						</div>
 						{error && <p className="text-danger-light text-sm text-center">{error}</p>}
-						<button type="submit" className="btn-primary p-[15px] text-base mt-1.5">Register</button>
+						<button
+						type="submit"
+						disabled={submitting}
+						className="btn-primary p-[15px] text-base mt-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+					>{submitting ? 'Creating account…' : 'Register'}</button>
 					</form>
 					<GoogleAuthButton />
 					<p className="text-center mt-[18px] text-sm text-ink/50">

@@ -1,15 +1,22 @@
 const { GoogleGenAI } = require('@google/genai');
+const env = require('../config/env');
+const logger = require('./logger');
 
 // GEMINI_API_KEYS is the multi-key form (comma-separated, however many keys
 // you have — 1 or 10+, doesn't matter); GEMINI_API_KEY is kept working as a
 // single-key fallback so existing setups don't need to change anything.
-const rawKeys = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || '')
-  .split(',')
-  .map((k) => k.trim())
-  .filter(Boolean);
+// Both are resolved in config/env.js.
+const rawKeys = env.geminiKeys;
 
+// Deliberately NOT a throw. This module is required transitively by
+// noteRoutes -> server.js, so throwing here took down the entire
+// application — notes CRUD, login, everything — because one optional
+// integration's key was missing or had been rotated. AI features degrade
+// instead: getClient() throws per-request, which the callers already handle
+// as "AI unavailable" (aiService's retry/fallback paths, and
+// deriveContentFields' best-effort embedding).
 if (rawKeys.length === 0) {
-  throw new Error('No Gemini API key configured — set GEMINI_API_KEY or GEMINI_API_KEYS in server/.env');
+  logger.warn('No Gemini API key configured — AI features are disabled (set GEMINI_API_KEY or GEMINI_API_KEYS)');
 }
 
 // One entry per configured key: a cached client (no reason to reconstruct
@@ -23,7 +30,9 @@ const pool = rawKeys.map((key, i) => ({
   cooldownUntil: 0,
 }));
 
-console.log(`[gemini] loaded ${pool.length} API key${pool.length === 1 ? '' : 's'}`);
+if (pool.length > 0) {
+  logger.info(`Gemini key pool: ${pool.length} key${pool.length === 1 ? '' : 's'}`);
+}
 
 let cursor = -1;
 
@@ -72,7 +81,7 @@ const markExhausted = (key, err) => {
   const entry = pool.find((p) => p.key === key);
   if (!entry) return;
   entry.cooldownUntil = Date.now() + cooldownMsFor(err);
-  console.warn(`[gemini] ${entry.label} exhausted — cooling down until ${new Date(entry.cooldownUntil).toISOString()}`);
+  logger.warn(`Gemini ${entry.label} exhausted — cooling down until ${new Date(entry.cooldownUntil).toISOString()}`);
 };
 
 // Round-robins across keys not currently in cooldown, so load spreads
@@ -80,6 +89,13 @@ const markExhausted = (key, err) => {
 // every key happens to be cooling down, still returns one (the caller's own
 // retry/backoff loop is what actually waits) rather than blocking here.
 const getClient = () => {
+  // With no keys configured the rotation arithmetic below would produce
+  // `pool[NaN]` and throw an opaque TypeError. Fail with something a reader
+  // can act on — callers already treat a throw here as "AI unavailable".
+  if (pool.length === 0) {
+    throw new Error('AI is not configured on this server (no Gemini API key)');
+  }
+
   const now = Date.now();
   // cursor always advances against the fixed pool array (not a
   // cooldown-filtered subset, which can change size/order call to call and

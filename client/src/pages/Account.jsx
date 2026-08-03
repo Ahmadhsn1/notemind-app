@@ -4,6 +4,7 @@ import api, {getAuthToken} from '../api/axios'
 import {useAuth} from '../context/AuthContext'
 import {useToast} from '../context/ToastContext'
 import ConfirmModal from '../components/ConfirmModal'
+import GoogleLinkButton from '../components/GoogleLinkButton'
 
 function initials(name) {
 	if (!name) return '?'
@@ -23,6 +24,9 @@ function Account() {
 	const [email, setEmail] = useState(user?.email || '')
 	const [profileSaving, setProfileSaving] = useState(false)
 	const [memberSince, setMemberSince] = useState(null)
+	// Comes from GET /auth/me rather than the cached user object — linking
+	// state can change in another tab, and it is never part of the login payload.
+	const [hasGoogle, setHasGoogle] = useState(false)
 
 	const [currentPassword, setCurrentPassword] = useState('')
 	const [newPassword, setNewPassword] = useState('')
@@ -40,7 +44,9 @@ function Account() {
 		;(async () => {
 			try {
 				const response = await api.get('/auth/me')
-				if (!ignore) setMemberSince(response.data.createdAt)
+				if (ignore) return
+				setMemberSince(response.data.createdAt)
+				setHasGoogle(!!response.data.hasGoogle)
 			} catch {
 				// Non-critical — the rest of the page still works off the cached
 				// user object without a join date shown.
@@ -187,6 +193,15 @@ function Account() {
 					{passwordSaving ? 'Updating…' : 'Update password'}
 				</button>
 			</form>
+
+			<div className={cardClass}>
+				<h2 className={labelClass}>Sign-in methods</h2>
+				<GoogleLinkButton
+					hasGoogle={hasGoogle}
+					hasPassword={user?.hasPassword !== false}
+					onChange={setHasGoogle}
+				/>
+			</div>
 
 			<div className={cardClass}>
 				<h2 className={labelClass}>Export your data</h2>

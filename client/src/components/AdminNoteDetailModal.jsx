@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState} from 'react'
 import DOMPurify from 'dompurify'
-import api, {resolveUploadUrl} from '../api/axios'
+import api from '../api/axios'
+import {withPendingImages, withSignedImages} from '../utils/noteImages'
 import {useToast} from '../context/ToastContext'
 import {folderColor} from '../utils/folderColor'
 import {relativeTime} from '../utils/relativeTime'
@@ -33,17 +34,34 @@ function AdminNoteDetailModal({noteId, onClose}) {
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only fetch, remounts fresh per open
 	}, [noteId])
 
-	const safeHtml = useMemo(() => {
+	// Same two-phase image resolution as NoteViewModal — see utils/noteImages.
+	// Note that an admin viewing someone else's note will NOT get signed URLs
+	// for it: sign-images only signs files the caller owns. That is deliberate
+	// rather than an oversight — admin read access to note *text* is an
+	// existing moderation capability, but silently minting image URLs for
+	// another user's private files is a bigger step than this change should
+	// take on its own.
+	const pendingHtml = useMemo(() => {
 		if (!note) return ''
 		const html = note.contentHtml || `<p>${note.body || ''}</p>`
-		const sanitized = DOMPurify.sanitize(html)
-		if (!sanitized.includes('<img')) return sanitized
-		const doc = new DOMParser().parseFromString(sanitized, 'text/html')
-		doc.querySelectorAll('img[src^="/uploads/"]').forEach((img) => {
-			img.setAttribute('src', resolveUploadUrl(img.getAttribute('src')))
-		})
-		return doc.body.innerHTML
+		return withPendingImages(DOMPurify.sanitize(html))
 	}, [note])
+
+	const [signedHtml, setSignedHtml] = useState(null)
+	const [signedForHtml, setSignedForHtml] = useState(pendingHtml)
+	if (signedForHtml !== pendingHtml) {
+		setSignedForHtml(pendingHtml)
+		setSignedHtml(null)
+	}
+	const safeHtml = signedHtml ?? pendingHtml
+
+	useEffect(() => {
+		let ignore = false
+		withSignedImages(pendingHtml).then((resolved) => {
+			if (!ignore) setSignedHtml(resolved)
+		})
+		return () => { ignore = true }
+	}, [pendingHtml])
 
 	const toggleFlashcards = async () => {
 		const next = !showFlashcards

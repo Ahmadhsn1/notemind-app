@@ -23,6 +23,7 @@ function NoteFormModal({
 	onReminderChange,
 	onSubmit,
 	onClose,
+	isSaving,
 }) {
 	const [titleLoading, setTitleLoading] = useState(false)
 	const toast = useToast()
@@ -75,6 +76,8 @@ function NoteFormModal({
 							value={title}
 							onChange={(e) => onTitleChange(e.target.value)}
 							autoFocus
+							required
+							maxLength={300}
 							className="input-base w-full pr-10"
 						/>
 						<button
@@ -151,7 +154,15 @@ function NoteFormModal({
 							onClick={onClose}
 							className="bg-ink/8 border border-ink/20 text-ink rounded-[10px] font-semibold cursor-pointer transition-[opacity,transform] duration-200 hover:opacity-90 active:scale-[0.98] flex-1 p-[11px] text-[13.5px]"
 						>Cancel</button>
-						<button type="submit" className="btn-primary flex-1 p-[11px] text-[13.5px]">{isEditing ? 'Save changes' : 'Add note'}</button>
+						{/* Without the disabled state a second click before the POST
+					    resolved created a second, identical note — the request is
+					    slow enough on a poor connection that nothing on screen
+					    changes in between. */}
+					<button
+						type="submit"
+						disabled={isSaving}
+						className="btn-primary flex-1 p-[11px] text-[13.5px] disabled:opacity-60 disabled:cursor-not-allowed"
+					>{isSaving ? 'Saving…' : isEditing ? 'Save changes' : 'Add note'}</button>
 					</div>
 				</form>
 			</div>

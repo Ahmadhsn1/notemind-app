@@ -8,6 +8,7 @@ const AdminAuditLog = require('../models/AdminAuditLog');
 const Notification = require('../models/Notification');
 const HttpError = require('../utils/HttpError');
 const { broadcastAdminUpdate, pushNotificationToUser } = require('../services/socket');
+const { purgeNotes, purgeUsers } = require('../services/dataCleanup');
 const { buildUserNotesExport } = require('../services/noteExport');
 const { poolStatus, poolSize } = require('../services/geminiKeyPool');
 const { rateLimitConfig } = require('../middleware/rateLimit');
@@ -213,10 +214,7 @@ const deleteUser = async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) throw new HttpError(404, 'User not found');
 
-  const noteIds = await Note.find({ user: user._id }).distinct('_id');
-  await NoteVersion.deleteMany({ note: { $in: noteIds } });
-  await Flashcard.deleteMany({ user: user._id });
-  await Note.deleteMany({ user: user._id });
+  await purgeUsers([user._id]);
   await user.deleteOne();
 
   await logAction(req, 'delete_user', undefined, `${user.name} (${user.email})`);
@@ -253,9 +251,7 @@ const deleteUserNote = async (req, res) => {
   const note = await Note.findById(req.params.noteId);
   if (!note) throw new HttpError(404, 'Note not found');
 
-  await NoteVersion.deleteMany({ note: note._id });
-  await Flashcard.deleteMany({ note: note._id });
-  await note.deleteOne();
+  await purgeNotes([note._id]);
 
   await logAction(req, 'delete_note', note.user, `"${note.title}"`);
   broadcastAdminUpdate('admin');
@@ -269,12 +265,22 @@ const deleteUserNote = async (req, res) => {
 // *sets* pinned=true on a user's behalf (that's curation, not moderation),
 // only unpins.
 const archiveUserNote = async (req, res) => {
-  const note = await Note.findByIdAndUpdate(
-    req.params.noteId,
+  // Archived and trashed are mutually exclusive (models/Note.js). Scoping the
+  // update to `deletedAt: null` is what enforces that here — without it,
+  // archiving an already-trashed note set both fields and the note fell out
+  // of every view except Trash, where the 30-day purge then destroyed it.
+  // Mirrors the same guard in noteController.archiveNote.
+  const note = await Note.findOneAndUpdate(
+    { _id: req.params.noteId, deletedAt: null },
     { archivedAt: new Date(), pinned: false },
     { returnDocument: 'after' }
   );
-  if (!note) throw new HttpError(404, 'Note not found');
+  if (!note) {
+    const exists = await Note.exists({ _id: req.params.noteId });
+    throw exists
+      ? new HttpError(400, 'Restore the note from trash before archiving it')
+      : new HttpError(404, 'Note not found');
+  }
   await logAction(req, 'archive_note', note.user, `"${note.title}"`);
   broadcastAdminUpdate('admin');
   res.status(200).json(note);
@@ -409,10 +415,7 @@ const bulkUserAction = async (req, res) => {
       break;
     }
     case 'delete': {
-      const noteIds = await Note.find({ user: { $in: userIds } }).distinct('_id');
-      await NoteVersion.deleteMany({ note: { $in: noteIds } });
-      await Flashcard.deleteMany({ user: { $in: userIds } });
-      await Note.deleteMany({ user: { $in: userIds } });
+      await purgeUsers(userIds);
       await User.deleteMany({ _id: { $in: userIds } });
       await logAction(req, 'bulk_delete_user', undefined, summaryLabel);
       break;
