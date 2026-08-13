@@ -1,6 +1,8 @@
-import {useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import api from '../api/axios'
 import NoteEditor from './NoteEditor'
+import ConfirmModal from './ConfirmModal'
+import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
 
 function NoteFormModal({
@@ -26,9 +28,63 @@ function NoteFormModal({
 	isSaving,
 }) {
 	const [titleLoading, setTitleLoading] = useState(false)
+	const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
 	const toast = useToast()
 
+	// Snapshots the fields worth confirming before discarding, captured fresh
+	// every time the modal opens. This component stays mounted between opens
+	// (isOpen only toggles what render() returns, see the early return below),
+	// so without re-capturing on each open, editing a second note would
+	// compare itself against the first note's stale baseline. A ref, not
+	// state — it's read only from handleAttemptClose below (an event
+	// handler), never during render, so updating it doesn't need to trigger
+	// a re-render.
+	const initialRef = useRef(null)
+	useEffect(() => {
+		if (isOpen) {
+			initialRef.current = {title, contentHtml, tags, folder, reminderAt}
+		}
+		// Deliberately re-snapshotting only on open/close, not on every
+		// keystroke that changes title/contentHtml/tags/folder/reminderAt.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isOpen])
+
+	// Write 500 words, mis-click 4px outside the card, and it used to be gone
+	// — onClose() ran unconditionally. Now discarding a form that actually
+	// differs from what it opened with needs a confirm; an untouched or
+	// already-blank form still closes instantly, same as before. The dirty
+	// check reads initialRef.current here, inside the handler, rather than
+	// during render — refs aren't meant to be read while rendering (see
+	// initialRef's own comment above), only from effects or event handlers.
+	// Defined above the isOpen early-return below since useModalA11y (a
+	// hook, unlike this) needs to be called unconditionally on every render.
+	const handleAttemptClose = () => {
+		const initial = initialRef.current
+		const isDirty = !!initial && (
+			title !== initial.title ||
+			contentHtml !== initial.contentHtml ||
+			tags !== initial.tags ||
+			folder !== initial.folder ||
+			reminderAt !== initial.reminderAt
+		)
+		if (isDirty) {
+			setShowDiscardConfirm(true)
+		} else {
+			onClose()
+		}
+	}
+
+	const panelRef = useRef(null)
+	// Escape goes through the same dirty-check gate as the backdrop/Cancel/X
+	// — it's just another way to attempt to close, not a bypass of it.
+	useModalA11y(isOpen, handleAttemptClose, panelRef)
+
 	if (!isOpen) return null
+
+	const handleConfirmDiscard = () => {
+		setShowDiscardConfirm(false)
+		onClose()
+	}
 
 	const addingFolder = folder === '' || !existingFolders.includes(folder)
 
@@ -54,15 +110,23 @@ function NoteFormModal({
 	}
 
 	return (
+		<>
 		<div
 			className="fixed inset-0 bg-[#0a0b10]/60 backdrop-blur-[3px] flex items-center justify-center z-20 p-4 min-[381px]:p-6"
-			onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+			onClick={(e) => { if (e.target === e.currentTarget) handleAttemptClose() }}
 		>
-			<div className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+			<div
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label={isEditing ? 'Edit note' : 'New note'}
+				tabIndex={-1}
+				className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] outline-none"
+			>
 				<div className="flex items-center justify-between mb-3.5">
 					<h3 className="text-base font-bold">{isEditing ? 'Edit note' : 'New note'}</h3>
 					<button
-						onClick={onClose}
+						onClick={handleAttemptClose}
 						aria-label="Close"
 						className="w-7 h-7 p-0 rounded-[8px] bg-ink/6 border-none text-ink/62 text-xs font-semibold cursor-pointer transition-[opacity,transform] duration-200 hover:bg-ink/10 hover:opacity-100 active:scale-[0.98]"
 					>✕</button>
@@ -151,7 +215,7 @@ function NoteFormModal({
 					<div className="flex gap-2.5 mt-1">
 						<button
 							type="button"
-							onClick={onClose}
+							onClick={handleAttemptClose}
 							className="bg-ink/8 border border-ink/20 text-ink rounded-[10px] font-semibold cursor-pointer transition-[opacity,transform] duration-200 hover:opacity-90 active:scale-[0.98] flex-1 p-[11px] text-[13.5px]"
 						>Cancel</button>
 						{/* Without the disabled state a second click before the POST
@@ -167,6 +231,16 @@ function NoteFormModal({
 				</form>
 			</div>
 		</div>
+
+		<ConfirmModal
+			isOpen={showDiscardConfirm}
+			title="Discard this note?"
+			message="You have unsaved changes. Closing now will lose them."
+			confirmLabel="Discard"
+			onConfirm={handleConfirmDiscard}
+			onCancel={() => setShowDiscardConfirm(false)}
+		/>
+		</>
 	)
 }
 
