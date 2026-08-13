@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const multer = require('multer');
+const Sentry = require('@sentry/node');
 const HttpError = require('../utils/HttpError');
 
 const notFoundHandler = (req, res) => {
@@ -70,6 +71,16 @@ const errorHandler = (err, req, res, next) => {
   // embeds the offending document, which for this app means note content and
   // emails in plaintext logs. Replaced wholesale by structured logging later.
   console.error(`[error] ${req.method} ${req.originalUrl} —`, err?.stack || err?.message || err);
+  // Only genuinely unexpected errors reach here — everything above this
+  // point (HttpError, CastError, ValidationError, MulterError, duplicate
+  // key, body-parser errors) is an expected client-facing case, not an
+  // incident. Reusing that same classification here (rather than Sentry's
+  // own Express error-handler middleware, whose default filter treats *any*
+  // error without a `.status` — CastError included — as a 500) is what keeps
+  // Sentry from filling up with routine validation noise. A silent no-op
+  // when SENTRY_DSN isn't set: captureException checks for a bound client
+  // internally and never throws without one.
+  Sentry.captureException(err);
   res.status(500).json({ message: 'Server error' });
 };
 

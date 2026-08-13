@@ -3,6 +3,16 @@ global.crypto = crypto;
 
 const env = require('./config/env');
 
+// Initialised before anything else that could throw, so Sentry's own
+// instrumentation is in place for every subsequent require. A no-op when
+// SENTRY_DSN isn't set (it's optional in config/env.js) — this ships now so
+// the app is ready the moment a DSN exists, without needing a follow-up
+// deploy just to turn error reporting on.
+const Sentry = require('@sentry/node');
+if (env.SENTRY_DSN) {
+  Sentry.init({ dsn: env.SENTRY_DSN, environment: env.NODE_ENV });
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
