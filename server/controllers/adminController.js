@@ -140,6 +140,23 @@ const guardNotSelf = (req, targetId) => {
   }
 };
 
+// guardNotSelf only stops one admin from locking *themself* out — two admins
+// can still demote or delete each other down to zero, and recovering from
+// that needs shell access to run scripts/set-admin.js. Refuses any action
+// that would drop the admin count to 0. Safe to call unconditionally: if
+// none of targetIds is currently an admin (a promotion, a non-admin being
+// deleted, etc.) adminsAffected is 0 and this is a no-op.
+const guardNotLastAdmin = async (targetIds) => {
+  const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
+  const [totalAdmins, adminsAffected] = await Promise.all([
+    User.countDocuments({ role: 'admin' }),
+    User.countDocuments({ _id: { $in: ids }, role: 'admin' }),
+  ]);
+  if (adminsAffected > 0 && totalAdmins - adminsAffected < 1) {
+    throw new HttpError(400, 'This would leave the app with no admins left — promote someone else first.');
+  }
+};
+
 const updateUserRole = async (req, res) => {
   guardNotSelf(req, req.params.id);
   const { role } = req.body;
@@ -147,6 +164,11 @@ const updateUserRole = async (req, res) => {
   const before = await User.findById(req.params.id).select('role name email');
   if (!before) throw new HttpError(404, 'User not found');
   const beforeRole = before.role;
+
+  // Checked against the pre-update state — after the write below, querying
+  // admin counts would already reflect this change and the guard would
+  // always pass.
+  await guardNotLastAdmin(req.params.id);
 
   const user = await User.findByIdAndUpdate(req.params.id, { role }, { returnDocument: 'after' });
 
@@ -213,6 +235,8 @@ const deleteUser = async (req, res) => {
 
   const user = await User.findById(req.params.id);
   if (!user) throw new HttpError(404, 'User not found');
+
+  await guardNotLastAdmin(user._id);
 
   await purgeUsers([user._id]);
   await user.deleteOne();
@@ -410,11 +434,13 @@ const bulkUserAction = async (req, res) => {
     case 'role_user':
     case 'role_admin': {
       const role = action === 'role_admin' ? 'admin' : 'user';
+      if (role === 'user') await guardNotLastAdmin(userIds);
       await User.updateMany({ _id: { $in: userIds } }, { role });
       await logAction(req, 'bulk_role_change', undefined, `${summaryLabel} → ${role}`);
       break;
     }
     case 'delete': {
+      await guardNotLastAdmin(userIds);
       await purgeUsers(userIds);
       await User.deleteMany({ _id: { $in: userIds } });
       await logAction(req, 'bulk_delete_user', undefined, summaryLabel);
@@ -530,6 +556,14 @@ const deleteNotification = async (req, res) => {
 };
 
 module.exports = {
+  // Exported alongside the route handlers (not just internally referenced)
+  // so its own logic can be unit-tested directly — guardNotSelf already
+  // means no single valid request can ever route the acting admin's own
+  // account into it, so the only way this guard is genuinely reachable
+  // end-to-end is a race between two admins' concurrent requests. Testing
+  // it in isolation is how its "would this leave zero admins" contract gets
+  // verified without simulating that race.
+  guardNotLastAdmin,
   getAdminStats,
   getAdminUsers,
   getGrowth,
