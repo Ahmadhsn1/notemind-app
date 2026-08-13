@@ -4,6 +4,30 @@ const { buildTodaysResurface, localIsoDate } = require('../services/resurfaceSer
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_WINDOW_DAYS = 14;
+
+// Local midnight, `delta` calendar days from `date`. setDate() rather than
+// `date.getTime() + delta * DAY_MS` on purpose — the fixed-ms version
+// silently skips a calendar day across a DST spring-forward (that local day
+// is only 23h of real time) and double-counts one on fall-back (25h), which
+// broke the streak walk-back below across a DST boundary. setDate() operates
+// on wall-clock date components, so the Date engine re-derives the correct
+// UTC offset for the resulting day instead of drifting by an hour. Same
+// helper as noteController.getNoteStreak's, duplicated rather than shared —
+// see resurfaceService.js's localIsoDate comment for why this feature keeps
+// its own day helpers local instead of importing noteController's.
+const addLocalDays = (date, delta) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + delta);
+  return d;
+};
+
+// Days-since-epoch for a local 'YYYY-MM-DD' key, via Date.UTC (which has no
+// DST) — used only to test two day-keys for adjacency (`b - a === 1`).
+const epochDay = (isoDate) => {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / DAY_MS;
+};
 // Only what the card needs to render — never the embedding.
 const OLD_NOTE_SELECT = 'title folder tags createdAt body';
 
@@ -100,33 +124,35 @@ const getResurfaceStreak = async (req, res) => {
   const records = await Resurface.find({ user: req.user.id, engagedAt: { $ne: null } }).select('date').lean();
   const activeDays = new Set(records.map((r) => r.date));
 
-  let cursor = new Date();
-  cursor.setHours(0, 0, 0, 0);
+  let cursor = addLocalDays(new Date(), 0);
   if (!activeDays.has(localIsoDate(cursor))) {
-    cursor = new Date(cursor.getTime() - DAY_MS);
+    cursor = addLocalDays(cursor, -1);
   }
 
   let streak = 0;
   while (activeDays.has(localIsoDate(cursor))) {
     streak++;
-    cursor = new Date(cursor.getTime() - DAY_MS);
+    cursor = addLocalDays(cursor, -1);
   }
 
-  const sortedDayTimes = [...activeDays].map((key) => new Date(key).getTime()).sort((a, b) => a - b);
+  // String-sorting the 'YYYY-MM-DD' keys directly sorts chronologically;
+  // epochDay (not raw Date subtraction) is what keeps the adjacency check
+  // itself DST-safe.
+  const sortedDays = [...activeDays].sort();
   let longestStreak = 0;
   let run = 0;
-  let prevTime = null;
-  for (const t of sortedDayTimes) {
-    run = prevTime !== null && t - prevTime === DAY_MS ? run + 1 : 1;
+  let prevEpoch = null;
+  for (const key of sortedDays) {
+    const e = epochDay(key);
+    run = prevEpoch !== null && e - prevEpoch === 1 ? run + 1 : 1;
     longestStreak = Math.max(longestStreak, run);
-    prevTime = t;
+    prevEpoch = e;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = addLocalDays(new Date(), 0);
   const days = [];
   for (let i = STREAK_WINDOW_DAYS - 1; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * DAY_MS);
+    const d = addLocalDays(today, -i);
     days.push({ date: localIsoDate(d), active: activeDays.has(localIsoDate(d)) });
   }
 

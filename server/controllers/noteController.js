@@ -657,21 +657,41 @@ const getDigest = async (req, res) => {
 };
 
 const NOTE_DAY_MS = 24 * 60 * 60 * 1000;
-// Local calendar day (not UTC, unlike flashcardController.getReviewStreak's
-// dayKey) — matches how the rest of this file already handles day
-// boundaries (see the RESURFACE_DAY_OFFSETS loop above, which uses plain
-// setHours too).
-const dayKey = (date) => new Date(date).toDateString();
-// Local calendar date as 'YYYY-MM-DD' for JSON output — NOT toISOString(),
-// which converts to UTC first and would shift the date by a day for any
-// timezone ahead of UTC (e.g. local midnight in UTC+5 is still the previous
-// day in UTC).
+// Local calendar date as 'YYYY-MM-DD' — NOT toISOString(), which converts to
+// UTC first and would shift the date by a day for any timezone ahead of UTC
+// (e.g. local midnight in UTC+5 is still the previous day in UTC). Also
+// serves as the day *key* below — this used to be a separate toDateString()
+// variant of the same idea; unified so there's one canonical local-day
+// identity instead of two that could drift apart.
 const localIsoDate = (date) => {
   const d = new Date(date);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+};
+
+// Local midnight, `delta` calendar days from `date`. setDate() rather than
+// `date.getTime() + delta * NOTE_DAY_MS` on purpose — the fixed-ms version
+// silently skips a calendar day across a DST spring-forward (that local day
+// is only 23h of real time) and double-counts one on fall-back (25h), which
+// broke every streak/range walk below across a DST boundary. setDate()
+// operates on wall-clock date components, so the Date engine re-derives the
+// correct UTC offset for the resulting day instead of drifting by an hour.
+const addLocalDays = (date, delta) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + delta);
+  return d;
+};
+
+// Days-since-epoch for a local 'YYYY-MM-DD' key, via Date.UTC (which has no
+// DST) — used only to test two day-keys for adjacency (`b - a === 1`).
+// Comparing the raw ms timestamps of two local midnights for exact equality
+// to NOTE_DAY_MS has the same DST problem addLocalDays exists to avoid.
+const epochDay = (isoDate) => {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / NOTE_DAY_MS;
 };
 
 // Consecutive-day streak of note activity (created or edited), walking back
@@ -685,44 +705,45 @@ const getNoteStreak = async (req, res) => {
   const notes = await Note.find({ user: req.user.id }).select('createdAt updatedAt').lean();
   const activeDays = new Set();
   for (const n of notes) {
-    activeDays.add(dayKey(n.createdAt));
-    activeDays.add(dayKey(n.updatedAt));
+    activeDays.add(localIsoDate(n.createdAt));
+    activeDays.add(localIsoDate(n.updatedAt));
   }
 
-  let cursor = new Date();
-  cursor.setHours(0, 0, 0, 0);
-  if (!activeDays.has(dayKey(cursor))) {
-    cursor = new Date(cursor.getTime() - NOTE_DAY_MS);
+  let cursor = addLocalDays(new Date(), 0);
+  if (!activeDays.has(localIsoDate(cursor))) {
+    cursor = addLocalDays(cursor, -1);
   }
 
   let streak = 0;
-  while (activeDays.has(dayKey(cursor))) {
+  while (activeDays.has(localIsoDate(cursor))) {
     streak++;
-    cursor = new Date(cursor.getTime() - NOTE_DAY_MS);
+    cursor = addLocalDays(cursor, -1);
   }
 
   // Longest-ever run of consecutive active days, not just the current
   // trailing one above — walk the distinct active days in order and track
-  // the longest unbroken run.
-  const sortedDayTimes = [...activeDays].map((key) => new Date(key).getTime()).sort((a, b) => a - b);
+  // the longest unbroken run. String-sorting the 'YYYY-MM-DD' keys directly
+  // sorts chronologically; epochDay (not raw Date subtraction) is what keeps
+  // the adjacency check itself DST-safe.
+  const sortedDays = [...activeDays].sort();
   let longestStreak = 0;
   let run = 0;
-  let prevTime = null;
-  for (const t of sortedDayTimes) {
-    run = prevTime !== null && t - prevTime === NOTE_DAY_MS ? run + 1 : 1;
+  let prevEpoch = null;
+  for (const key of sortedDays) {
+    const e = epochDay(key);
+    run = prevEpoch !== null && e - prevEpoch === 1 ? run + 1 : 1;
     longestStreak = Math.max(longestStreak, run);
-    prevTime = t;
+    prevEpoch = e;
   }
 
   // Last 14 calendar days, oldest first — lets the client show exactly
   // which days actually counted, not just the final number.
   const STREAK_WINDOW_DAYS = 14;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = addLocalDays(new Date(), 0);
   const days = [];
   for (let i = STREAK_WINDOW_DAYS - 1; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * NOTE_DAY_MS);
-    days.push({ date: localIsoDate(d), active: activeDays.has(dayKey(d)) });
+    const d = addLocalDays(today, -i);
+    days.push({ date: localIsoDate(d), active: activeDays.has(localIsoDate(d)) });
   }
 
   res.status(200).json({ streak, longestStreak, days });
@@ -743,6 +764,10 @@ const getNoteActivity = async (req, res) => {
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) {
     throw new HttpError(400, 'Invalid from/to date range');
   }
+  // Approximate day count for the cap check only — ms/NOTE_DAY_MS can be off
+  // by one near a DST transition, which doesn't matter for a generous
+  // ~13-month sanity limit. The actual enumeration below steps by calendar
+  // day (addLocalDays), not this number, so the returned data is exact.
   const rangeDays = Math.round((to.getTime() - from.getTime()) / NOTE_DAY_MS) + 1;
   if (rangeDays > ACTIVITY_MAX_RANGE_DAYS) {
     throw new HttpError(400, `Range too large (max ${ACTIVITY_MAX_RANGE_DAYS} days)`);
@@ -760,8 +785,8 @@ const getNoteActivity = async (req, res) => {
   }
 
   const days = [];
-  for (let i = 0; i < rangeDays; i++) {
-    const key = localIsoDate(new Date(from.getTime() + i * NOTE_DAY_MS));
+  for (let cursor = addLocalDays(from, 0); cursor <= to; cursor = addLocalDays(cursor, 1)) {
+    const key = localIsoDate(cursor);
     days.push({ date: key, count: counts[key] || 0 });
   }
 
