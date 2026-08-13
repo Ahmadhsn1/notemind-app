@@ -1,7 +1,8 @@
-import {useEffect, useMemo, useState} from 'react'
+import {useEffect, useMemo, useRef, useState} from 'react'
 import DOMPurify from 'dompurify'
 import api from '../api/axios'
 import {withPendingImages, withSignedImages} from '../utils/noteImages'
+import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
 import {folderColor} from '../utils/folderColor'
 import {relativeTime} from '../utils/relativeTime'
@@ -76,6 +77,13 @@ function AdminNoteDetailModal({noteId, onClose}) {
 		}
 	}
 
+	// No isOpen prop — the parent only mounts this while a note is being
+	// viewed (see AdminUserContentModal's own {viewingNoteId && <...>}), so
+	// a constant `true` makes useModalA11y's "run once per open" effect fire
+	// on mount and clean up on unmount, the equivalent transition here.
+	const panelRef = useRef(null)
+	useModalA11y(true, onClose, panelRef)
+
 	if (!noteId) return null
 
 	return (
@@ -83,7 +91,14 @@ function AdminNoteDetailModal({noteId, onClose}) {
 			className="fixed inset-0 bg-[#0a0b10]/65 backdrop-blur-[3px] flex items-center justify-center z-[35] p-4 min-[381px]:p-6"
 			onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
 		>
-			<div className="w-full max-w-[520px] max-h-[85vh] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-3 overflow-y-auto">
+			<div
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label={note ? note.title : 'Note details'}
+				tabIndex={-1}
+				className="w-full max-w-[520px] max-h-[85vh] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-3 overflow-y-auto outline-none"
+			>
 				{!note ? (
 					<div className="h-[160px] flex items-center justify-center text-ink/40 text-[13px]">Loading…</div>
 				) : (

@@ -1,5 +1,6 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import api from '../api/axios'
+import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
 import {relativeTime} from '../utils/relativeTime'
 import {folderColor} from '../utils/folderColor'
@@ -51,6 +52,13 @@ function AdminUserContentModal({userId, onClose, onNoteChanged}) {
 		loadNotes()
 	}, [])
 	/* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
+
+	// No isOpen prop — the parent only mounts this while a user is selected
+	// (see Admin.jsx's own {contentUserId && <...>}), so a constant `true`
+	// makes useModalA11y's "run once per open" effect fire on mount and
+	// clean up on unmount, the equivalent transition here.
+	const panelRef = useRef(null)
+	useModalA11y(true, onClose, panelRef)
 
 	const switchTab = (tab) => {
 		setSubTab(tab)
@@ -112,7 +120,14 @@ function AdminUserContentModal({userId, onClose, onNoteChanged}) {
 			className="fixed inset-0 bg-[#0a0b10]/60 backdrop-blur-[3px] flex items-center justify-center z-30 p-4 min-[381px]:p-6"
 			onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
 		>
-			<div className="w-full max-w-[600px] max-h-[80vh] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-3.5">
+			<div
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label={userName ? `${userName}'s content` : 'Content'}
+				tabIndex={-1}
+				className="w-full max-w-[600px] max-h-[80vh] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-3.5 outline-none"
+			>
 				<div className="flex items-center justify-between gap-2">
 					<h3 className="text-base font-bold">{userName ? `${userName}'s content` : 'Content'}</h3>
 					<button

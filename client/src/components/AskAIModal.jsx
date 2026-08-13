@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import api, { getAuthToken } from '../api/axios'
 import { useToast } from '../context/ToastContext'
 import ConfirmModal from './ConfirmModal'
+import useModalA11y from '../hooks/useModalA11y'
 
 // The old version of this modal faked a "typing" reveal over an answer that
 // had already fully arrived — POST /api/notes/ask now genuinely streams, so
@@ -76,8 +77,6 @@ function AskAIModal({isOpen, onClose, notes, onActionApplied}) {
 	// time the modal opens. Aborting it here is what actually stops that.
 	const abortRef = useRef(null)
 
-	if (!isOpen) return null
-
 	const reset = () => {
 		abortRef.current?.abort()
 		setQuestion('')
@@ -94,6 +93,14 @@ function AskAIModal({isOpen, onClose, notes, onActionApplied}) {
 		reset()
 		onClose()
 	}
+
+	// Defined above the isOpen early-return below since useModalA11y (a hook,
+	// unlike handleClose above it) needs to be called unconditionally on
+	// every render.
+	const panelRef = useRef(null)
+	useModalA11y(isOpen, handleClose, panelRef)
+
+	if (!isOpen) return null
 
 	// Uses raw fetch rather than the axios instance — axios doesn't expose an
 	// incremental read of the response body in the browser the way
@@ -188,7 +195,14 @@ function AskAIModal({isOpen, onClose, notes, onActionApplied}) {
 			className="fixed inset-0 bg-[#0a0b10]/60 backdrop-blur-[3px] flex items-center justify-center z-20 p-4 min-[381px]:p-6"
 			onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
 		>
-			<div className="w-full max-w-[480px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+			<div
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label="Ask your notes"
+				tabIndex={-1}
+				className="w-full max-w-[480px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] outline-none"
+			>
 				<div className="flex items-center justify-between mb-3.5">
 					<h3 className="text-base font-bold flex items-center gap-2">
 						<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" className="text-accent"><path d="M12 2l1.8 5.6L19 9.4l-5.2 1.9L12 17l-1.8-5.7L5 9.4l5.2-1.8L12 2Z" /></svg>

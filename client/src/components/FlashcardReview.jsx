@@ -1,5 +1,6 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import api from '../api/axios'
+import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
 
 // Quality scores fed to the server's SM-2 implementation (0-5). Labels match
@@ -47,6 +48,9 @@ function FlashcardReview({isOpen, noteId, onClose}) {
 	}, [isOpen, noteId])
 	/* eslint-enable react-hooks/set-state-in-effect */
 
+	const panelRef = useRef(null)
+	useModalA11y(isOpen, onClose, panelRef)
+
 	if (!isOpen) return null
 
 	const current = cards[index]
@@ -70,7 +74,14 @@ function FlashcardReview({isOpen, noteId, onClose}) {
 			className="fixed inset-0 bg-[#0a0b10]/60 backdrop-blur-[3px] flex items-center justify-center z-30 p-4 min-[381px]:p-6"
 			onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
 		>
-			<div className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-5 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-4">
+			<div
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label="Flashcards"
+				tabIndex={-1}
+				className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-5 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-4 outline-none"
+			>
 				<div className="flex items-center justify-between">
 					<h3 className="text-base font-bold">Flashcards</h3>
 					<button

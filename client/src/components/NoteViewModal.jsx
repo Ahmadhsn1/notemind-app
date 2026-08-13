@@ -1,6 +1,7 @@
-import {useEffect, useMemo, useState} from 'react'
+import {useEffect, useMemo, useRef, useState} from 'react'
 import DOMPurify from 'dompurify'
 import api from '../api/axios'
+import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
 import {folderColor} from '../utils/folderColor'
 import {relativeTime} from '../utils/relativeTime'
@@ -28,18 +29,23 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 		setVersions([])
 	}
 
+	// Escape is handled by useModalA11y below (shared with every other
+	// dialog); this effect now only owns the arrow-key browsing, which is
+	// specific to this one.
 	useEffect(() => {
 		if (!isOpen) return
 
 		const handleKeyDown = (e) => {
 			if (e.key === 'ArrowLeft') onPrev()
 			else if (e.key === 'ArrowRight') onNext()
-			else if (e.key === 'Escape') onClose()
 		}
 
 		window.addEventListener('keydown', handleKeyDown)
 		return () => window.removeEventListener('keydown', handleKeyDown)
-	}, [isOpen, onPrev, onNext, onClose])
+	}, [isOpen, onPrev, onNext])
+
+	const panelRef = useRef(null)
+	useModalA11y(isOpen, onClose, panelRef)
 
 	const loadVersions = async () => {
 		if (!note) return
@@ -181,7 +187,14 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 				</button>
 			)}
 
-			<div className="w-full max-w-[480px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-3">
+			<div
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label={note.title}
+				tabIndex={-1}
+				className="w-full max-w-[480px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-3 outline-none"
+			>
 				<div className="flex items-start justify-between gap-2">
 					<div className="flex items-center gap-2 min-w-0">
 						<span className="w-2 h-2 rounded-full shrink-0" style={{background: folderColor(note.folder)}} />

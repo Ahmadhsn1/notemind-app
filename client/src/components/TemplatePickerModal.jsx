@@ -1,15 +1,10 @@
-import {useEffect} from 'react'
+import {useRef} from 'react'
 import {NOTE_TEMPLATES} from '../utils/noteTemplates'
+import useModalA11y from '../hooks/useModalA11y'
 
 function TemplatePickerModal({isOpen, onSelect, onClose}) {
-	useEffect(() => {
-		if (!isOpen) return
-		const handleKeyDown = (e) => {
-			if (e.key === 'Escape') onClose()
-		}
-		window.addEventListener('keydown', handleKeyDown)
-		return () => window.removeEventListener('keydown', handleKeyDown)
-	}, [isOpen, onClose])
+	const panelRef = useRef(null)
+	useModalA11y(isOpen, onClose, panelRef)
 
 	if (!isOpen) return null
 
@@ -18,7 +13,14 @@ function TemplatePickerModal({isOpen, onSelect, onClose}) {
 			className="fixed inset-0 bg-[#0a0b10]/60 backdrop-blur-[3px] flex items-center justify-center z-20 p-4 min-[381px]:p-6"
 			onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
 		>
-			<div className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+			<div
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label="New note"
+				tabIndex={-1}
+				className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] outline-none"
+			>
 				<div className="flex items-center justify-between mb-3.5">
 					<h3 className="text-base font-bold">New note</h3>
 					<button

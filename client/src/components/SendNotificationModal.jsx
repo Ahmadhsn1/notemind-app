@@ -1,5 +1,6 @@
-import {useState} from 'react'
+import {useRef, useState} from 'react'
 import api from '../api/axios'
+import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
 
 // Recipients are resolved server-side to a concrete list at send time (see
@@ -11,6 +12,13 @@ function SendNotificationModal({users, onClose, onSent}) {
 	const [selectedIds, setSelectedIds] = useState([])
 	const [sending, setSending] = useState(false)
 	const toast = useToast()
+	// No isOpen prop here — Admin.jsx only mounts this component while it's
+	// shown, unlike the other dialogs' own internal isOpen-gated return null.
+	// Passing a constant `true` makes useModalA11y's "run once per open"
+	// effect fire on mount and clean up on unmount, which is the equivalent
+	// transition for a component that IS the open state.
+	const panelRef = useRef(null)
+	useModalA11y(true, onClose, panelRef)
 
 	const toggleUser = (id) => {
 		setSelectedIds((prev) => {
@@ -49,7 +57,14 @@ function SendNotificationModal({users, onClose, onSent}) {
 			className="fixed inset-0 bg-[#0a0b10]/60 backdrop-blur-[3px] flex items-center justify-center z-30 p-4"
 			onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
 		>
-			<div className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-3.5 max-h-[85vh] overflow-y-auto">
+			<div
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label="Send notification"
+				tabIndex={-1}
+				className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.45)] flex flex-col gap-3.5 max-h-[85vh] overflow-y-auto outline-none"
+			>
 				<div className="flex items-center justify-between">
 					<h3 className="text-base font-bold">Send notification</h3>
 					<button
