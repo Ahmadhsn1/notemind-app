@@ -1,4 +1,4 @@
-import {useState, useEffect} from 'react'
+import {useState, useEffect, useCallback, useMemo} from 'react'
 import {useLocation, useNavigate} from 'react-router-dom'
 import api from '../api/axios'
 import {fetchAllNotes, NOTES_PAGE_SIZE, MAX_NOTE_PAGES} from '../api/notes'
@@ -92,11 +92,15 @@ function Dashboard() {
 	// array, so a partial list makes them wrong rather than merely short.
 	// `view` (active/archived/trash) is read from closure so a refetch after
 	// any mutation always reflects whichever list is currently open.
-	const fetchNotes = async () => {
+	// useCallback (not a plain function) so the handlers below that call it —
+	// handleDelete, handleArchive, etc. — can themselves be memoized with a
+	// stable dependency instead of "a fresh function every render," which is
+	// what NoteCard's React.memo below actually needs to skip re-rendering.
+	const fetchNotes = useCallback(async () => {
 		const {notes: allNotes, truncated} = await fetchAllNotes({view})
 		setNotes(allNotes)
 		setNotesTruncated(truncated)
-	}
+	}, [view])
 
 	// Drives the loading/error UI (unlike the silent `fetchNotes` refetch used
 	// after mutations). Shared by the mount/view-change effect and the Retry
@@ -165,7 +169,11 @@ function Dashboard() {
 		...folderNames.map((name) => ({name, count: notes.filter((n) => n.folder === name).length})),
 	]
 
-	const filteredNotes = notes.filter((note) => {
+	// Memoized rather than recomputed every render — with a few hundred notes
+	// loaded, filtering+sorting on every keystroke of the note editor (which
+	// only changes unrelated form state, not `notes` itself) was measurable
+	// input lag. Each only recomputes when its own actual inputs change.
+	const filteredNotes = useMemo(() => notes.filter((note) => {
 		const matchesSearch =
 			searchQuery.trim() === '' ||
 			note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -174,18 +182,24 @@ function Dashboard() {
 		const matchesFolder = activeFolder === 'All' || note.folder === activeFolder
 		const matchesDay = !selectedDay || toLocalDateKey(note.createdAt) === selectedDay
 		return matchesSearch && matchesFolder && matchesDay
-	})
+	}), [notes, searchQuery, semanticMatchIds, activeFolder, selectedDay])
 
-	const sortedNotes = [...filteredNotes].sort((a, b) => {
+	const sortedNotes = useMemo(() => [...filteredNotes].sort((a, b) => {
 		if (sortMode === 'newest') return new Date(b.createdAt) - new Date(a.createdAt)
 		if (sortMode === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt)
 		return a.title.localeCompare(b.title)
-	})
+	}), [filteredNotes, sortMode])
 
 	// Pinned section is only meaningful in the active view — archived/trashed
 	// notes are never pinned (server clears the flag on archive/delete).
-	const pinnedNotes = view === 'active' ? sortedNotes.filter((n) => n.pinned) : []
-	const unpinnedNotes = view === 'active' ? sortedNotes.filter((n) => !n.pinned) : sortedNotes
+	const pinnedNotes = useMemo(
+		() => (view === 'active' ? sortedNotes.filter((n) => n.pinned) : []),
+		[sortedNotes, view],
+	)
+	const unpinnedNotes = useMemo(
+		() => (view === 'active' ? sortedNotes.filter((n) => !n.pinned) : sortedNotes),
+		[sortedNotes, view],
+	)
 
 	const viewingIndex = viewingNoteId ? sortedNotes.findIndex((n) => n._id === viewingNoteId) : -1
 	// Wikilink/backlink navigation (Phase 2) can target a note outside the
@@ -236,7 +250,12 @@ function Dashboard() {
 	const handleOpenDueFlashcards = () => setFlashcardReviewTarget('due')
 	const handleCloseFlashcards = () => setFlashcardReviewTarget(null)
 
-	const handleEdit = (note) => {
+	// useCallback with an empty dep array — every one of these only calls
+	// setters (stable across renders) or reads its own `note` argument, no
+	// closed-over state — so NoteCard's React.memo below sees the same
+	// function on every render instead of a fresh one, which is what
+	// actually lets it skip re-rendering.
+	const handleEdit = useCallback((note) => {
 		setEditingId(note._id)
 		setTitle(note.title)
 		// contentHtml state is what actually gets sent on save (see handleSubmit)
@@ -255,7 +274,7 @@ function Dashboard() {
 		setReminderAt(toDatetimeLocalValue(note.reminderAt))
 		setEditingUpdatedAt(note.updatedAt)
 		setIsModalOpen(true)
-	}
+	}, [])
 
 	const handleContentChange = ({html, text}) => {
 		setContentHtml(html)
@@ -342,9 +361,9 @@ function Dashboard() {
 		if (noteData) await saveNote(noteData)
 	}
 
-	const handleViewNote = (note) => {
+	const handleViewNote = useCallback((note) => {
 		setViewingNoteId(note._id)
-	}
+	}, [])
 
 	const handleCloseView = () => {
 		setViewingNoteId(null)
@@ -364,7 +383,7 @@ function Dashboard() {
 	// Soft delete now — reversible via Trash, so no confirm-before-trash
 	// friction. ConfirmModal is reserved for the one truly irreversible
 	// action: permanent delete from Trash (see below).
-	const handleDelete = async (note) => {
+	const handleDelete = useCallback(async (note) => {
 		try {
 			await api.delete(`/notes/${note._id}`)
 			await fetchNotes()
@@ -372,9 +391,9 @@ function Dashboard() {
 		} catch {
 			toast.error('Could not delete the note. Try again.')
 		}
-	}
+	}, [fetchNotes, toast])
 
-	const handleRequestPermanentDelete = (note) => setNoteToPermanentlyDelete(note)
+	const handleRequestPermanentDelete = useCallback((note) => setNoteToPermanentlyDelete(note), [])
 	const handleCancelPermanentDelete = () => setNoteToPermanentlyDelete(null)
 
 	const handleConfirmPermanentDelete = async () => {
@@ -389,7 +408,7 @@ function Dashboard() {
 		}
 	}
 
-	const handleRestore = async (note) => {
+	const handleRestore = useCallback(async (note) => {
 		try {
 			await api.post(`/notes/${note._id}/restore`)
 			await fetchNotes()
@@ -397,18 +416,18 @@ function Dashboard() {
 		} catch {
 			toast.error('Could not restore the note. Try again.')
 		}
-	}
+	}, [fetchNotes, toast])
 
-	const handleTogglePin = async (note) => {
+	const handleTogglePin = useCallback(async (note) => {
 		try {
 			const response = await api.patch(`/notes/${note._id}/pin`)
 			setNotes((prev) => prev.map((n) => (n._id === note._id ? response.data : n)))
 		} catch {
 			toast.error('Could not update pin. Try again.')
 		}
-	}
+	}, [toast])
 
-	const handleArchive = async (note) => {
+	const handleArchive = useCallback(async (note) => {
 		try {
 			await api.patch(`/notes/${note._id}/archive`)
 			await fetchNotes()
@@ -416,9 +435,9 @@ function Dashboard() {
 		} catch {
 			toast.error('Could not archive the note. Try again.')
 		}
-	}
+	}, [fetchNotes, toast])
 
-	const handleUnarchive = async (note) => {
+	const handleUnarchive = useCallback(async (note) => {
 		try {
 			await api.patch(`/notes/${note._id}/unarchive`)
 			await fetchNotes()
@@ -426,12 +445,12 @@ function Dashboard() {
 		} catch {
 			toast.error('Could not unarchive the note. Try again.')
 		}
-	}
+	}, [fetchNotes, toast])
 
-	const handleSummarize = async (id) => {
+	const handleSummarize = useCallback(async (id) => {
 		const response = await api.post(`/notes/${id}/ai-process`)
 		setNotes((prev) => prev.map((n) => (n._id === id ? response.data : n)))
-	}
+	}, [])
 
 	return (
 		<div className="flex h-screen">

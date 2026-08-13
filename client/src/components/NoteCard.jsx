@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import {memo, useState} from 'react'
 import {folderColor} from '../utils/folderColor'
 import {relativeTime} from '../utils/relativeTime'
 import {useToast} from '../context/ToastContext'
@@ -14,6 +14,12 @@ const BELL_PATH = <><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" /><path
 
 const formatReminder = (dateString) => new Date(dateString).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'})
 
+// Memoized because Dashboard renders potentially hundreds of these, and its
+// own re-renders (e.g. every keystroke in the note editor) don't change any
+// individual note's data. This only pays off because Dashboard.jsx also
+// wraps every handler prop passed in with useCallback — React.memo's shallow
+// prop comparison would otherwise see a fresh function on every render and
+// re-render anyway, making the memo a no-op.
 function NoteCard({note, view, onDelete, onEdit, onSummarize, onView, onTogglePin, onArchive, onUnarchive, onRestore, onPermanentDelete, matchedBySemanticSearch}) {
 	const [loading, setLoading] = useState(false)
 	const toast = useToast()
@@ -130,4 +136,4 @@ function NoteCard({note, view, onDelete, onEdit, onSummarize, onView, onTogglePi
 	)
 }
 
-export default NoteCard
+export default memo(NoteCard)
