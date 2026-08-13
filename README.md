@@ -449,8 +449,9 @@ severs streaming responses mid-write and triggers a client reconnect storm.
 | Object storage | Cloudflare R2 |
 | Email | Gmail SMTP or Resend |
 
-Step-by-step instructions are in **[DEPLOY.md](DEPLOY.md)**; outstanding work
-is tracked in **[REMAINING.md](REMAINING.md)**.
+Step-by-step deployment instructions and the outstanding-work tracker live in
+the private `notemind-claude-config` repo, alongside this project's other
+internal planning docs.
 
 **Why the API is not also on Vercel.** Vercel supports WebSockets, but a
 connection is pinned to whichever function instance accepted it, with no
