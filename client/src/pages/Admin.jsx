@@ -149,6 +149,7 @@ function Admin() {
 	const [live, setLive] = useState(false)
 	const [actingOnId, setActingOnId] = useState(null)
 	const [deleteTarget, setDeleteTarget] = useState(null)
+	const [deleteNotificationTarget, setDeleteNotificationTarget] = useState(null)
 	const [contentUserId, setContentUserId] = useState(null)
 	const [passwordResetResult, setPasswordResetResult] = useState(null)
 	const [selectedIds, setSelectedIds] = useState([])
@@ -165,12 +166,16 @@ function Admin() {
 	// instead of it being frozen at whatever moment the table last rendered
 	// for some other reason (a socket-triggered refetch, a manual action) —
 	// activityStatus() takes `now` as an argument specifically so re-invoking
-	// it here on every tick actually changes its output.
+	// it here on every tick actually changes its output. Scoped to the Users
+	// tab: `now` is only ever read from that tab's table, so ticking (and
+	// re-rendering this entire 700+ line page) once a second while an admin
+	// is looking at Stats/Growth/Notifications/Audit/System was pure waste.
 	const [now, setNow] = useState(() => Date.now())
 	useEffect(() => {
+		if (activeTab !== 'users') return undefined
 		const id = setInterval(() => setNow(Date.now()), 1000)
 		return () => clearInterval(id)
-	}, [])
+	}, [activeTab])
 
 	// Shared by the initial mount fetch and the socket-triggered refresh below
 	// — `silent` skips the error toast for background refreshes (a transient
@@ -346,13 +351,21 @@ function Admin() {
 		}
 	}
 
-	const handleDeleteNotification = async (id) => {
+	// Every other destructive action on this page goes through ConfirmModal —
+	// this one used to fire straight off the row's Delete button, which meant
+	// a stray click permanently removed a notification (and everyone's read
+	// receipts for it) with no way back.
+	const handleConfirmDeleteNotification = async () => {
+		if (!deleteNotificationTarget) return
+		const id = deleteNotificationTarget._id
 		try {
 			await api.delete(`/admin/notifications/${id}`)
 			setNotifications((prev) => prev.filter((n) => n._id !== id))
 			refreshAuditLog()
 		} catch (err) {
 			toast.error(err.response?.data?.message || 'Could not delete notification.')
+		} finally {
+			setDeleteNotificationTarget(null)
 		}
 	}
 
@@ -678,7 +691,7 @@ function Admin() {
 											notification={n}
 											expanded={expandedNotifId === n._id}
 											onToggleExpand={() => setExpandedNotifId((id) => (id === n._id ? null : n._id))}
-											onDelete={() => handleDeleteNotification(n._id)}
+											onDelete={() => setDeleteNotificationTarget(n)}
 										/>
 									))
 								)}
@@ -726,6 +739,15 @@ function Admin() {
 				confirmLabel="Delete forever"
 				onConfirm={handleConfirmDelete}
 				onCancel={() => setDeleteTarget(null)}
+			/>
+
+			<ConfirmModal
+				isOpen={!!deleteNotificationTarget}
+				title="Delete this notification?"
+				message={deleteNotificationTarget ? `"${deleteNotificationTarget.message}" will be removed for every recipient. This can't be undone.` : ''}
+				confirmLabel="Delete"
+				onConfirm={handleConfirmDeleteNotification}
+				onCancel={() => setDeleteNotificationTarget(null)}
 			/>
 
 			{contentUserId && <AdminUserContentModal userId={contentUserId} onClose={() => setContentUserId(null)} onNoteChanged={handleContentChanged} />}
