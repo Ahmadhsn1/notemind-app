@@ -157,6 +157,11 @@ function Register() {
 					<p className="text-center mt-[18px] text-sm text-ink/50">
 						Already have an account? <Link to="/login" className="text-accent no-underline font-semibold">Login</Link>
 					</p>
+					<p className="text-center mt-3 text-[12px] text-ink/35">
+						By creating an account you agree to our{' '}
+						<Link to="/terms" className="text-ink/50 hover:text-ink no-underline">Terms</Link> and{' '}
+						<Link to="/privacy" className="text-ink/50 hover:text-ink no-underline">Privacy Policy</Link>.
+					</p>
 				</div>
 			</div>
 		</div>

@@ -1,5 +1,8 @@
 import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import Landing from './pages/Landing';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 import Register from './pages/Register';
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
@@ -34,6 +37,11 @@ function App() {
       {/* Public by necessity — the user can't sign in, which is the point. */}
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      {/* Always public, regardless of auth state — these are the app's only
+          crawlable/ad-eligible pages, and Terms/Privacy need to be readable
+          by someone who hasn't (and may never) create an account. */}
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
       <Route
         path="/dashboard"
         element={user ? <Dashboard /> : <Navigate to="/login" />}
@@ -55,7 +63,10 @@ function App() {
           <Suspense fallback={<RouteFallback />}><Admin /></Suspense>
         ) : <Navigate to={user ? '/dashboard' : '/admin/login'} />}
       />
-      <Route path="/" element={<Navigate to={user ? '/dashboard' : '/login'} />} />
+      {/* Marketing page for logged-out visitors — the app's public front
+          door; a logged-in visitor is sent straight past it to their
+          dashboard. */}
+      <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
     </Routes>
   );
 }

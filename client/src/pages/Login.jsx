@@ -149,6 +149,11 @@ function Login() {
 					<p className="text-center mt-[18px] text-sm text-ink/50">
 						Don't have an account? <Link to="/register" className="text-accent no-underline font-semibold">Register</Link>
 					</p>
+					<p className="text-center mt-3 text-[12px] text-ink/35">
+						<Link to="/terms" className="text-ink/50 hover:text-ink no-underline">Terms</Link>
+						{' · '}
+						<Link to="/privacy" className="text-ink/50 hover:text-ink no-underline">Privacy Policy</Link>
+					</p>
 				</div>
 			</div>
 		</div>
