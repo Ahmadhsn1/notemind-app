@@ -8,7 +8,7 @@ import {relativeTime} from '../utils/relativeTime'
 import {legacyBodyToHtml} from '../utils/legacyBodyToHtml'
 import {withPendingImages, withSignedImages} from '../utils/noteImages'
 
-function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, onNavigateToNote, onNoteChanged, onOpenFlashcards, currentIndex, totalCount}) {
+function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, onNavigateToNote, onNoteChanged, onOpenFlashcards, onSelectTag, currentIndex, totalCount}) {
 	const [showVersions, setShowVersions] = useState(false)
 	const [versions, setVersions] = useState([])
 	const [versionsLoading, setVersionsLoading] = useState(false)
@@ -275,7 +275,14 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 
 				{note.tags.length > 0 && (
 					<div className="flex flex-wrap gap-1.5">
-						{note.tags.map((t) => <span key={t} className="bg-accent/30 text-accent text-[11px] py-[3px] px-2.5 rounded-full">{t}</span>)}
+						{note.tags.map((t) => (
+							<button
+								key={t}
+								type="button"
+								onClick={() => onSelectTag?.(t)}
+								className="bg-accent/30 text-accent text-[11px] py-[3px] px-2.5 rounded-full cursor-pointer transition-colors duration-150 hover:bg-accent/45"
+							>{t}</button>
+						))}
 					</div>
 				)}
 

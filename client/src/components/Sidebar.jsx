@@ -8,9 +8,19 @@ function initials(name) {
 	return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')
 }
 
-function Sidebar({folders, activeFolder, onSelectFolder, onNewNote, onAskAI, onOpenFlashcards, userName, isAdmin, onLogout, isOpen, onClose, view, onViewChange}) {
+function Sidebar({folders, activeFolder, onSelectFolder, tags, activeTag, onSelectTag, onNewNote, onAskAI, onOpenFlashcards, userName, isAdmin, onLogout, isOpen, onClose, view, onViewChange}) {
 	const selectFolder = (name) => {
 		onSelectFolder(name)
+		onViewChange('active')
+		onClose()
+	}
+
+	// Mirrors selectFolder — a tag is a filter exactly like a folder, so
+	// picking one also snaps back to the active view and closes the mobile
+	// drawer the same way. Toggling (same tag clicked again clears it) lives
+	// in Dashboard's onSelectTag itself, matching MomentumHero's onSelectDay.
+	const selectTag = (name) => {
+		onSelectTag(name)
 		onViewChange('active')
 		onClose()
 	}
@@ -108,6 +118,30 @@ function Sidebar({folders, activeFolder, onSelectFolder, onNewNote, onAskAI, onO
 						})}
 					</div>
 				</div>
+
+				{tags.length > 0 && (
+					<div>
+						<div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-ink/40 px-2.5 mb-1">Tags</div>
+						{/* Capped and scrollable, unlike Folders above — a folder count
+						    stays small in practice, but AI auto-tagging can produce far
+						    more tags than fit without pushing Library out of view. */}
+						<div className="flex flex-col gap-0.5 max-h-[168px] overflow-y-auto">
+							{tags.map((t) => {
+								const active = t.name === activeTag
+								return (
+									<div
+										key={t.name}
+										onClick={() => selectTag(t.name)}
+										className={`flex items-center gap-2.5 py-[9px] px-2.5 rounded-[10px] cursor-pointer border text-[13.5px] transition-colors duration-150 ${active ? 'bg-accent/14 border-accent/45 text-ink' : 'border-transparent text-ink/62 hover:bg-ink/6 hover:text-ink'}`}
+									>
+										<span className="flex-1 truncate">#{t.name}</span>
+										<span className={`text-[11px] font-semibold py-px px-[7px] rounded-full ${active ? 'text-accent bg-accent/16' : 'text-ink/42 bg-ink/6'}`}>{t.count}</span>
+									</div>
+								)
+							})}
+						</div>
+					</div>
+				)}
 
 				<div className="flex flex-col gap-0.5">
 					<div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-ink/40 px-2.5 mb-1">Library</div>

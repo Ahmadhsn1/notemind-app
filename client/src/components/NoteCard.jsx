@@ -20,7 +20,7 @@ const formatReminder = (dateString) => new Date(dateString).toLocaleString(undef
 // wraps every handler prop passed in with useCallback — React.memo's shallow
 // prop comparison would otherwise see a fresh function on every render and
 // re-render anyway, making the memo a no-op.
-function NoteCard({note, view, onDelete, onEdit, onSummarize, onView, onTogglePin, onArchive, onUnarchive, onRestore, onPermanentDelete, matchedBySemanticSearch}) {
+function NoteCard({note, view, onDelete, onEdit, onSummarize, onView, onTogglePin, onArchive, onUnarchive, onRestore, onPermanentDelete, onSelectTag, matchedBySemanticSearch}) {
 	const [loading, setLoading] = useState(false)
 	const toast = useToast()
 
@@ -37,6 +37,11 @@ function NoteCard({note, view, onDelete, onEdit, onSummarize, onView, onTogglePi
 	}
 
 	const stop = (fn) => (e) => { e.stopPropagation(); fn(note) }
+	// Same stopPropagation need as `stop` above, but a tag click hands the
+	// clicked tag's name to onSelectTag, not the note — the whole card is a
+	// click target (onView below), so without stopping propagation a tag
+	// click would also open the note.
+	const stopTag = (tag) => (e) => { e.stopPropagation(); onSelectTag(tag) }
 
 	const iconBtnBase = 'w-[26px] h-[26px] p-0 rounded-[7px] flex items-center justify-center bg-ink-deep/55 border border-ink/15 text-ink/62 text-sm font-semibold cursor-pointer transition-[opacity,transform] duration-200 hover:opacity-100 active:scale-[0.98]'
 
@@ -119,7 +124,14 @@ function NoteCard({note, view, onDelete, onEdit, onSummarize, onView, onTogglePi
 
 			{note.tags.length > 0 && (
 				<div className="flex flex-wrap gap-1.5">
-					{note.tags.map((t) => <span key={t} className="bg-accent/30 text-accent text-[11px] py-[3px] px-2.5 rounded-full">{t}</span>)}
+					{note.tags.map((t) => (
+						<button
+							key={t}
+							type="button"
+							onClick={stopTag(t)}
+							className="bg-accent/30 text-accent text-[11px] py-[3px] px-2.5 rounded-full cursor-pointer transition-colors duration-150 hover:bg-accent/45"
+						>{t}</button>
+					))}
 				</div>
 			)}
 

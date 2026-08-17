@@ -45,6 +45,11 @@ function Dashboard() {
 	const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
 	const [searchQuery, setSearchQuery] = useState('')
 	const [activeFolder, setActiveFolder] = useState('All')
+	// Same toggle-off-on-repeat-click shape as selectedDay below (and the same
+	// reason a tag click needs one: clicking a tag is a filter action, not a
+	// navigation, so there has to be an obvious way back to "no tag filter"
+	// other than reloading the page).
+	const [activeTag, setActiveTag] = useState(null)
 	// Set by clicking a day bar in MomentumHero's "Daily activity" chart —
 	// ANDed with search/folder below, same as those two already combine.
 	// Clicking the same bar again toggles it back to null (see the
@@ -169,6 +174,12 @@ function Dashboard() {
 		...folderNames.map((name) => ({name, count: notes.filter((n) => n.folder === name).length})),
 	]
 
+	// Named noteTags, not tags — `tags` is already the note-form's
+	// comma-separated tags input state above. Same per-render (not memoized)
+	// computation as folders above — cheap enough at note-collection scale.
+	const noteTagNames = [...new Set(notes.flatMap((note) => note.tags))].sort((a, b) => a.localeCompare(b))
+	const noteTags = noteTagNames.map((name) => ({name, count: notes.filter((n) => n.tags.includes(name)).length}))
+
 	// Memoized rather than recomputed every render — with a few hundred notes
 	// loaded, filtering+sorting on every keystroke of the note editor (which
 	// only changes unrelated form state, not `notes` itself) was measurable
@@ -180,9 +191,10 @@ function Dashboard() {
 			note.body.toLowerCase().includes(searchQuery.toLowerCase()) ||
 			semanticMatchIds.includes(note._id)
 		const matchesFolder = activeFolder === 'All' || note.folder === activeFolder
+		const matchesTag = !activeTag || note.tags.includes(activeTag)
 		const matchesDay = !selectedDay || toLocalDateKey(note.createdAt) === selectedDay
-		return matchesSearch && matchesFolder && matchesDay
-	}), [notes, searchQuery, semanticMatchIds, activeFolder, selectedDay])
+		return matchesSearch && matchesFolder && matchesTag && matchesDay
+	}), [notes, searchQuery, semanticMatchIds, activeFolder, activeTag, selectedDay])
 
 	const sortedNotes = useMemo(() => [...filteredNotes].sort((a, b) => {
 		if (sortMode === 'newest') return new Date(b.createdAt) - new Date(a.createdAt)
@@ -365,6 +377,24 @@ function Dashboard() {
 		setViewingNoteId(note._id)
 	}, [])
 
+	// useCallback with an empty dep array, same reasoning as handleEdit et al.
+	// above (see that comment) — this is passed to memo(NoteCard) as a tag-
+	// click handler, so a fresh function identity every render would defeat
+	// the memo for every card. Toggles like selectedDay: clicking the
+	// already-active tag clears the filter instead of re-selecting it.
+	const handleSelectTag = useCallback((tagName) => {
+		setActiveTag((prev) => (prev === tagName ? null : tagName))
+	}, [])
+
+	// Closing the view modal before applying the filter — same "close, then
+	// act" shape as handleOpenFlashcardsForNote below — because filtering the
+	// list out from under a modal the user can't see it change would be
+	// confusing, not because anything actually depends on the ordering.
+	const handleSelectTagFromView = useCallback((tagName) => {
+		setViewingNoteId(null)
+		handleSelectTag(tagName)
+	}, [handleSelectTag])
+
 	const handleCloseView = () => {
 		setViewingNoteId(null)
 	}
@@ -459,6 +489,9 @@ function Dashboard() {
 				folders={folders}
 				activeFolder={activeFolder}
 				onSelectFolder={setActiveFolder}
+				tags={noteTags}
+				activeTag={activeTag}
+				onSelectTag={handleSelectTag}
 				onNewNote={handleOpenNew}
 				onAskAI={() => setIsAskModalOpen(true)}
 				onOpenFlashcards={handleOpenDueFlashcards}
@@ -482,17 +515,30 @@ function Dashboard() {
 					onOpenSidebar={() => setIsSidebarOpen(true)}
 				/>
 
-				{selectedDay && (
-					<div className="flex items-center gap-1.5 mb-4 -mt-2">
-						<span className="inline-flex items-center gap-1.5 bg-accent/30 text-accent text-[11px] font-medium py-[3px] pl-2.5 pr-1.5 rounded-full">
-							{new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
-							<button
-								type="button"
-								onClick={() => setSelectedDay(null)}
-								aria-label="Clear day filter"
-								className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-accent/25 cursor-pointer"
-							>×</button>
-						</span>
+				{(selectedDay || activeTag) && (
+					<div className="flex items-center gap-1.5 mb-4 -mt-2 flex-wrap">
+						{selectedDay && (
+							<span className="inline-flex items-center gap-1.5 bg-accent/30 text-accent text-[11px] font-medium py-[3px] pl-2.5 pr-1.5 rounded-full">
+								{new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
+								<button
+									type="button"
+									onClick={() => setSelectedDay(null)}
+									aria-label="Clear day filter"
+									className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-accent/25 cursor-pointer"
+								>×</button>
+							</span>
+						)}
+						{activeTag && (
+							<span className="inline-flex items-center gap-1.5 bg-accent/30 text-accent text-[11px] font-medium py-[3px] pl-2.5 pr-1.5 rounded-full">
+								#{activeTag}
+								<button
+									type="button"
+									onClick={() => setActiveTag(null)}
+									aria-label="Clear tag filter"
+									className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-accent/25 cursor-pointer"
+								>×</button>
+							</span>
+						)}
 					</div>
 				)}
 
@@ -565,6 +611,7 @@ function Dashboard() {
 											onUnarchive={handleUnarchive}
 											onRestore={handleRestore}
 											onPermanentDelete={handleRequestPermanentDelete}
+											onSelectTag={handleSelectTag}
 										/>
 									))}
 								</div>
@@ -593,6 +640,7 @@ function Dashboard() {
 										onRestore={handleRestore}
 										onPermanentDelete={handleRequestPermanentDelete}
 										matchedBySemanticSearch={matchedBySemanticSearch}
+										onSelectTag={handleSelectTag}
 									/>
 								)
 							})}
@@ -667,6 +715,7 @@ function Dashboard() {
 				onNavigateToNote={handleViewNote}
 				onNoteChanged={fetchNotes}
 				onOpenFlashcards={handleOpenFlashcardsForNote}
+				onSelectTag={handleSelectTagFromView}
 				currentIndex={viewingIndex}
 				totalCount={sortedNotes.length}
 			/>
