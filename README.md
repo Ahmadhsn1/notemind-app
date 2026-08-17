@@ -296,6 +296,7 @@ bucket; only keys from genuinely separate projects add capacity.
 | POST | `/reset-password` | Redeem a reset token |
 | GET | `/me` | Current user, including linkage state |
 | PUT | `/profile` | Update name and email |
+| PUT | `/email-preferences` | Toggle reminder/digest emails |
 | PUT | `/password` | Change password |
 | POST | `/google/link` | Attach a Google identity to this session |
 | DELETE | `/google/link` | Detach it |

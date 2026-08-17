@@ -247,7 +247,14 @@ const updateNote = async (req, res) => {
   Object.assign(updates, await deriveContentFields(req.body, req.user.id));
   if (req.body.tags !== undefined) updates.tags = normalizeTags(req.body.tags);
   if (req.body.folder !== undefined) updates.folder = normalizeFolder(req.body.folder);
-  if (req.body.reminderAt !== undefined) updates.reminderAt = req.body.reminderAt;
+  // Setting/changing/clearing the reminder always resets reminderNotifiedAt
+  // too — otherwise re-snoozing a reminder to a new time would inherit the
+  // "already emailed" flag from the old one and the scheduler would silently
+  // skip it forever.
+  if (req.body.reminderAt !== undefined) {
+    updates.reminderAt = req.body.reminderAt;
+    updates.reminderNotifiedAt = null;
+  }
 
   if (updates.title !== undefined || updates.contentHtml !== undefined) {
     await snapshotVersion(existingNote);

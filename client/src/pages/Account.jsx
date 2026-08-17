@@ -27,6 +27,12 @@ function Account() {
 	// Comes from GET /auth/me rather than the cached user object — linking
 	// state can change in another tab, and it is never part of the login payload.
 	const [hasGoogle, setHasGoogle] = useState(false)
+	// Same reasoning as hasGoogle above — not part of the login payload either.
+	// Default true matches the server's schema default, so the toggles read
+	// "on" during the brief window before GET /auth/me resolves.
+	const [emailReminders, setEmailReminders] = useState(true)
+	const [emailWeeklyDigest, setEmailWeeklyDigest] = useState(true)
+	const [savingPref, setSavingPref] = useState(null)
 
 	const [currentPassword, setCurrentPassword] = useState('')
 	const [newPassword, setNewPassword] = useState('')
@@ -47,6 +53,8 @@ function Account() {
 				if (ignore) return
 				setMemberSince(response.data.createdAt)
 				setHasGoogle(!!response.data.hasGoogle)
+				setEmailReminders(response.data.emailReminders !== false)
+				setEmailWeeklyDigest(response.data.emailWeeklyDigest !== false)
 			} catch {
 				// Non-critical — the rest of the page still works off the cached
 				// user object without a join date shown.
@@ -88,6 +96,27 @@ function Account() {
 			toast.error(err.response?.data?.message || 'Could not update password.')
 		} finally {
 			setPasswordSaving(false)
+		}
+	}
+
+	// Optimistic: the checkbox flips immediately, then reverts on failure —
+	// a settings toggle that visibly lags behind the click reads as broken far
+	// more than the rare failure-and-revert does.
+	const handleTogglePref = async (key, value) => {
+		const setter = key === 'emailReminders' ? setEmailReminders : setEmailWeeklyDigest
+		const previous = key === 'emailReminders' ? emailReminders : emailWeeklyDigest
+		setter(value)
+		setSavingPref(key)
+		try {
+			await api.put('/auth/email-preferences', {
+				emailReminders: key === 'emailReminders' ? value : emailReminders,
+				emailWeeklyDigest: key === 'emailWeeklyDigest' ? value : emailWeeklyDigest,
+			})
+		} catch (err) {
+			setter(previous)
+			toast.error(err.response?.data?.message || 'Could not save that preference.')
+		} finally {
+			setSavingPref(null)
 		}
 	}
 
@@ -201,6 +230,34 @@ function Account() {
 					hasPassword={user?.hasPassword !== false}
 					onChange={setHasGoogle}
 				/>
+			</div>
+
+			<div className={cardClass}>
+				<h2 className={labelClass}>Email notifications</h2>
+				<label className="flex items-start gap-2.5 cursor-pointer">
+					<input
+						type="checkbox"
+						checked={emailReminders}
+						onChange={(e) => handleTogglePref('emailReminders', e.target.checked)}
+						disabled={savingPref === 'emailReminders'}
+						className="mt-0.5 w-4 h-4 accent-accent shrink-0"
+					/>
+					<span className="text-[13px] text-ink/75 leading-[1.5]">
+						<span className="font-semibold text-ink">Reminder emails</span> — email me when a note's reminder comes due
+					</span>
+				</label>
+				<label className="flex items-start gap-2.5 cursor-pointer">
+					<input
+						type="checkbox"
+						checked={emailWeeklyDigest}
+						onChange={(e) => handleTogglePref('emailWeeklyDigest', e.target.checked)}
+						disabled={savingPref === 'emailWeeklyDigest'}
+						className="mt-0.5 w-4 h-4 accent-accent shrink-0"
+					/>
+					<span className="text-[13px] text-ink/75 leading-[1.5]">
+						<span className="font-semibold text-ink">Weekly digest</span> — a Monday recap of the week's notes
+					</span>
+				</label>
 			</div>
 
 			<div className={cardClass}>

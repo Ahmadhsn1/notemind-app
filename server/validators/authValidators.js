@@ -45,6 +45,11 @@ const googleAuthSchema = z.object({
   credential: z.string().min(1, 'Missing Google credential'),
 });
 
+const emailPreferencesSchema = z.object({
+  emailReminders: z.boolean(),
+  emailWeeklyDigest: z.boolean(),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -54,4 +59,5 @@ module.exports = {
   googleAuthSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  emailPreferencesSchema,
 };

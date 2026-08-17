@@ -9,6 +9,7 @@ const app = require('./app');
 const logger = require('./services/logger');
 const connectDB = require('./config/db');
 const { initSocket, closeSocket } = require('./services/socket');
+const { startScheduler, stopScheduler } = require('./services/scheduler');
 
 // Explicit http.Server (rather than app.listen's implicit one) so Socket.IO
 // can attach to the same port — no separate websocket port to configure.
@@ -26,6 +27,7 @@ const start = async () => {
   }
 
   initSocket(httpServer);
+  startScheduler();
 
   httpServer.listen(env.PORT, () => {
     logger.info(`Server listening on port ${env.PORT} (${env.NODE_ENV})`);
@@ -50,6 +52,7 @@ const shutdown = async (signal) => {
   forceExit.unref();
 
   try {
+    stopScheduler();
     await closeSocket();
     await new Promise((resolve) => httpServer.close(resolve));
     await mongoose.connection.close(false);

@@ -6,6 +6,7 @@ const {
   googleAuth,
   getMe,
   updateProfile,
+  updateEmailPreferences,
   changePassword,
   deleteAccount,
   linkGoogle,
@@ -18,6 +19,7 @@ const {
   registerSchema,
   loginSchema,
   updateProfileSchema,
+  emailPreferencesSchema,
   changePasswordSchema,
   deleteAccountSchema,
   googleAuthSchema,
@@ -39,6 +41,7 @@ router.post('/reset-password', authLimiter, validateBody(resetPasswordSchema), r
 
 router.get('/me', protect, getMe);
 router.put('/profile', protect, validateBody(updateProfileSchema), updateProfile);
+router.put('/email-preferences', protect, validateBody(emailPreferencesSchema), updateEmailPreferences);
 router.put('/password', protect, authLimiter, validateBody(changePasswordSchema), changePassword);
 router.delete('/account', protect, authLimiter, validateBody(deleteAccountSchema), deleteAccount);
 

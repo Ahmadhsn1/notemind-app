@@ -166,7 +166,27 @@ const getMe = async (req, res) => {
     createdAt: user.createdAt,
     hasPassword: !!user.password,
     hasGoogle: !!user.googleId,
+    emailReminders: user.emailReminders,
+    emailWeeklyDigest: user.emailWeeklyDigest,
   });
+};
+
+// Separate from updateProfile on purpose — name/email changes go through
+// the email-uniqueness check and broadcastAdminUpdate('user'); these two
+// booleans are neither identity-bearing nor admin-dashboard-relevant, so
+// bundling them in would mean either running that check unnecessarily or
+// silently skipping it depending on which fields were present.
+const updateEmailPreferences = async (req, res) => {
+  const { emailReminders, emailWeeklyDigest } = req.body;
+
+  const user = await User.findByIdAndUpdate(
+    req.user.id,
+    { emailReminders, emailWeeklyDigest },
+    { new: true }
+  );
+  if (!user) throw new HttpError(404, 'User not found');
+
+  res.status(200).json({ emailReminders: user.emailReminders, emailWeeklyDigest: user.emailWeeklyDigest });
 };
 
 const RESET_TOKEN_TTL_MINUTES = 60;
@@ -379,6 +399,7 @@ module.exports = {
   googleAuth,
   getMe,
   updateProfile,
+  updateEmailPreferences,
   changePassword,
   deleteAccount,
   linkGoogle,

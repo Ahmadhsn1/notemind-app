@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
+import NotFound from './pages/NotFound';
 import Register from './pages/Register';
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
@@ -67,6 +68,7 @@ function App() {
           door; a logged-in visitor is sent straight past it to their
           dashboard. */}
       <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }

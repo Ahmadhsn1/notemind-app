@@ -57,6 +57,18 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  // Opt-outs for the two proactive emails services/scheduler.js can send —
+  // both default true (on) since they're tied to something the user
+  // explicitly did (set a reminder) or asked to see (the digest widget),
+  // not cold marketing. Checked by scheduler.js before every send.
+  emailReminders: {
+    type: Boolean,
+    default: true,
+  },
+  emailWeeklyDigest: {
+    type: Boolean,
+    default: true,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

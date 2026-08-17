@@ -42,6 +42,52 @@ describe('GET /auth/me', () => {
     expect(res.body.password).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toMatch(/\$2[aby]\$/);
   });
+
+  it('defaults both email preferences to true for a new account', async () => {
+    const user = await withRealPassword('correct-horse');
+    const res = await request(app).get('/api/auth/me').set(auth(user));
+
+    expect(res.body.emailReminders).toBe(true);
+    expect(res.body.emailWeeklyDigest).toBe(true);
+  });
+});
+
+describe('PUT /auth/email-preferences', () => {
+  beforeAll(startDb);
+  afterAll(stopDb);
+  beforeEach(clearDb);
+
+  it('updates both flags independently', async () => {
+    const user = await withRealPassword('correct-horse');
+
+    const res = await request(app)
+      .put('/api/auth/email-preferences')
+      .set(auth(user))
+      .send({ emailReminders: false, emailWeeklyDigest: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ emailReminders: false, emailWeeklyDigest: true });
+    expect((await User.findById(user._id)).emailReminders).toBe(false);
+  });
+
+  it('rejects a non-boolean value', async () => {
+    const user = await withRealPassword('correct-horse');
+
+    const res = await request(app)
+      .put('/api/auth/email-preferences')
+      .set(auth(user))
+      .send({ emailReminders: 'yes', emailWeeklyDigest: true });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('requires auth', async () => {
+    const res = await request(app)
+      .put('/api/auth/email-preferences')
+      .send({ emailReminders: false, emailWeeklyDigest: false });
+
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('self-service account deletion', () => {

@@ -124,4 +124,71 @@ const passwordResetEmail = (name, resetUrl, expiryMinutes) => ({
   `,
 });
 
-module.exports = { sendEmail, passwordResetEmail, isEmailConfigured: isConfigured, emailProvider: provider };
+// Sent by services/scheduler.js the moment a note's reminderAt comes due.
+// dashboardUrl is just the bare /dashboard — there's no per-note deep-link
+// route in the client yet (Dashboard has no ?note= query-param handling), so
+// this can't jump straight to the note itself; it's a "something's due, go
+// look" nudge rather than a one-click link to that exact note.
+const reminderEmail = (name, noteTitle, dashboardUrl) => ({
+  subject: `Reminder: ${noteTitle}`,
+  text: [
+    `Hi ${name},`,
+    '',
+    `Your reminder for the note "${noteTitle}" is due.`,
+    '',
+    dashboardUrl,
+  ].join('\n'),
+  html: `
+    <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a1a1a">
+      <h1 style="font-size:20px;margin:0 0 16px">Reminder</h1>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 20px">
+        Hi ${name}, your reminder for <strong>${noteTitle}</strong> is due.
+      </p>
+      <p style="margin:0 0 24px">
+        <a href="${dashboardUrl}" style="display:inline-block;background:#5b5bd6;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-size:15px;font-weight:600">Open NoteMind</a>
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#666;margin:16px 0 0">
+        Turn these off any time from Account → Email notifications.
+      </p>
+    </div>
+  `,
+});
+
+// Sent weekly by services/scheduler.js. `digest` is the same AI-generated
+// summary string the in-app widget shows (aiService.generateWeeklyDigest) —
+// kept identical rather than writing a second prompt, so the emailed and
+// in-app versions never say different things about the same week.
+const weeklyDigestEmail = (name, digest, noteCount, dashboardUrl) => ({
+  subject: 'Your NoteMind weekly digest',
+  text: [
+    `Hi ${name},`,
+    '',
+    `Here's what happened across your ${noteCount} note${noteCount === 1 ? '' : 's'} from the past week:`,
+    '',
+    digest,
+    '',
+    dashboardUrl,
+  ].join('\n'),
+  html: `
+    <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a1a1a">
+      <h1 style="font-size:20px;margin:0 0 16px">Your week in NoteMind</h1>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 12px">Hi ${name},</p>
+      <p style="font-size:15px;line-height:1.7;margin:0 0 20px;white-space:pre-wrap">${digest}</p>
+      <p style="margin:0 0 24px">
+        <a href="${dashboardUrl}" style="display:inline-block;background:#5b5bd6;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-size:15px;font-weight:600">Open NoteMind</a>
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#666;margin:16px 0 0">
+        Turn this off any time from Account → Email notifications.
+      </p>
+    </div>
+  `,
+});
+
+module.exports = {
+  sendEmail,
+  passwordResetEmail,
+  reminderEmail,
+  weeklyDigestEmail,
+  isEmailConfigured: isConfigured,
+  emailProvider: provider,
+};
