@@ -4,6 +4,8 @@ import Landing from './pages/Landing';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 import NotFound from './pages/NotFound';
+import WhatsNew from './pages/WhatsNew';
+import Features from './pages/Features';
 import Register from './pages/Register';
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
@@ -44,6 +46,8 @@ function App() {
           by someone who hasn't (and may never) create an account. */}
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
+      <Route path="/whats-new" element={<WhatsNew />} />
+      <Route path="/features" element={<Features />} />
       <Route
         path="/dashboard"
         element={user ? <Dashboard /> : (

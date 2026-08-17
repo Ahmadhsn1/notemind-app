@@ -1,5 +1,12 @@
 import {Link} from 'react-router-dom'
 import Logo from '../components/Logo'
+import {ICONS} from '../components/icons/marketingIcons'
+
+const Icon = ({path, className = ''}) => (
+	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+		{path}
+	</svg>
+)
 
 // Public marketing page at "/" — the only page in the app a logged-out
 // visitor and a search crawler can actually reach without an account.
@@ -12,28 +19,6 @@ import Logo from '../components/Logo'
 // anything else, or free reads as cheap/untrustworthy rather than generous.
 // That's what the Promise and FAQ sections exist for — don't strip them back
 // to a plain feature list.
-
-const Icon = ({path, className = ''}) => (
-	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-		{path}
-	</svg>
-)
-
-const ICONS = {
-	// Two four-point stars. An earlier version drew four separate radiating
-	// strokes plus a small diamond, which at 14–20px just read as a plus sign.
-	sparkles: <><path d="M10.5 3l1.7 4.8L17 9.5l-4.8 1.7L10.5 16l-1.7-4.8L4 9.5l4.8-1.7z" /><path d="M17.5 14l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z" /></>,
-	tag: <><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V4a1 1 0 0 1 1-1h8a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6Z" /><circle cx="7.5" cy="7.5" r="1.2" /></>,
-	cards: <><rect x="3" y="7" width="13" height="14" rx="2" /><path d="M8 3h11a2 2 0 0 1 2 2v11" /></>,
-	graph: <><circle cx="6" cy="7" r="2.5" /><circle cx="18" cy="7" r="2.5" /><circle cx="12" cy="18" r="2.5" /><path d="M8 8.5 10.5 16M16 8.5 13.5 16M8.5 7h7" /></>,
-	history: <><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v4h4" /><path d="M12 8v4l3 2" /></>,
-	offline: <><path d="M12 3v12" /><path d="M8 11l4 4 4-4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></>,
-	check: <path d="m5 13 4 4L19 7" />,
-	shield: <><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" /><path d="m9 12 2 2 4-4" /></>,
-	lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
-	download: <><path d="M12 3v12" /><path d="m7 11 5 4 5-4" /><path d="M4 20h16" /></>,
-	noAds: <><circle cx="12" cy="12" r="9" /><path d="m5.6 5.6 12.8 12.8" /></>,
-}
 
 const FEATURES = [
 	{
@@ -237,6 +222,11 @@ function Landing() {
 							</div>
 						))}
 					</div>
+					<p className="text-center mt-8">
+						<Link to="/features" className="text-[13.5px] font-semibold text-accent no-underline hover:opacity-80">
+							See everything NoteMind does →
+						</Link>
+					</p>
 				</section>
 
 				{/* The free promise — the section that makes "free" read as generous. */}
@@ -323,6 +313,7 @@ function Landing() {
 						<p className="text-[12px] text-ink/40">© {new Date().getFullYear()} NoteMind. All rights reserved.</p>
 					</div>
 					<nav className="flex items-center gap-5 text-[12.5px]">
+						<Link to="/whats-new" className="text-ink/45 hover:text-ink no-underline">What's new</Link>
 						<Link to="/privacy" className="text-ink/45 hover:text-ink no-underline">Privacy</Link>
 						<Link to="/terms" className="text-ink/45 hover:text-ink no-underline">Terms</Link>
 						<a href="mailto:notemind.ai.app@gmail.com" className="text-ink/45 hover:text-ink no-underline">Contact</a>

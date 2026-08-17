@@ -163,7 +163,26 @@ function Sidebar({folders, activeFolder, onSelectFolder, tags, activeTag, onSele
 					})}
 				</div>
 
-				<div className="mt-auto flex items-center gap-2.5 p-2.5 border-t border-ink/10">
+				<div className="mt-auto flex items-center gap-1">
+					<Link
+						to="/features"
+						onClick={onClose}
+						className="flex-1 flex items-center gap-2 py-2 px-2.5 rounded-[10px] text-[12.5px] font-medium text-ink/45 no-underline cursor-pointer transition-colors duration-150 hover:bg-ink/6 hover:text-ink/75"
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+						Features
+					</Link>
+					<Link
+						to="/whats-new"
+						onClick={onClose}
+						className="flex-1 flex items-center gap-2 py-2 px-2.5 rounded-[10px] text-[12.5px] font-medium text-ink/45 no-underline cursor-pointer transition-colors duration-150 hover:bg-ink/6 hover:text-ink/75"
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="shrink-0"><path d="M12 2l1.8 5.6L19 9.4l-5.2 1.9L12 17l-1.8-5.7L5 9.4l5.2-1.8L12 2Z" /></svg>
+						What's new
+					</Link>
+				</div>
+
+				<div className="flex items-center gap-2.5 p-2.5 border-t border-ink/10">
 					<Link
 						to="/account"
 						onClick={onClose}

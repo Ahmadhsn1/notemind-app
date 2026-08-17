@@ -189,6 +189,14 @@ function Account() {
 				</div>
 			</div>
 
+			<Link
+				to="/features"
+				className="flex items-center justify-between gap-2 rounded-[12px] border border-accent/22 bg-accent/8 py-2.5 px-3.5 text-[12.5px] font-semibold text-accent no-underline transition-colors duration-150 hover:bg-accent/14"
+			>
+				Explore everything NoteMind can do
+				<span aria-hidden="true">→</span>
+			</Link>
+
 			<form onSubmit={handleSaveProfile} className={cardClass}>
 				<h2 className={labelClass}>Profile</h2>
 				<div className="flex flex-col gap-1.5">
