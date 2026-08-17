@@ -6,6 +6,7 @@ export const TOOLBAR_ICON = {
 	bold: <path d="M6 4h5.5a3.5 3.5 0 0 1 0 7H6zM6 11h6a3.5 3.5 0 0 1 0 7H6z" />,
 	italic: <path d="M11 4h6M5 20h6M14 4 8 20" />,
 	strike: <path d="M6 12h12M8 6.5c1-1 2.5-1.5 4-1.5 2.5 0 4.5 1 4.5 3S16 8 12 8M8 17.5c1 1 2.5 1.5 4 1.5 2.5 0 4.5-1 4.5-3" />,
+	underline: <path d="M6 4v6a6 6 0 0 0 12 0V4M4 20h16" />,
 	h2: <path d="M4 6v12M11 6v12M4 12h7M15 9.5c0-1.5 1.2-2.5 2.5-2.5S20 8 20 9.5c0 1.5-1 2-2.5 3.4L15 18h5" />,
 	bulletList: <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />,
 	orderedList: <path d="M9 6h11M9 12h11M9 18h11M4 5v3M4 8h1M4.2 13.5c.6-.7 1.8-.7 2.2 0 .4.7-.1 1.2-.8 1.8l-1.4 1.2h2.4" />,

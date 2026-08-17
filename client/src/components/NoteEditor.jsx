@@ -197,6 +197,7 @@ function NoteEditor({contentHtml, legacyBody, onChange, placeholder, notes, curr
 				<ToolbarButton label="Bold" icon="bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
 				<ToolbarButton label="Italic" icon="italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
 				<ToolbarButton label="Strikethrough" icon="strike" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
+				<ToolbarButton label="Underline" icon="underline" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
 				<ToolbarButton label="Heading" icon="h2" active={editor.isActive('heading', {level: 2})} onClick={() => editor.chain().focus().toggleHeading({level: 2}).run()} />
 				<ToolbarButton label="Bullet list" icon="bulletList" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} />
 				<ToolbarButton label="Numbered list" icon="orderedList" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} />

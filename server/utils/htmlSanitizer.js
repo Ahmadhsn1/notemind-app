@@ -5,8 +5,14 @@ const sanitizeHtml = require('sanitize-html');
 // iframe, event handler attrs, arbitrary style/class) is stripped rather
 // than escaped, since this HTML is later rendered with
 // dangerouslySetInnerHTML on the client.
+//
+// 'a' and 'u': StarterKit v3 bundles extension-link (autolink + paste-as-link
+// on by default) and extension-underline, and NoteEditor.jsx disables
+// neither — so the editor has always been able to produce both, silently
+// stripped here until this fix. Keep this comment (and this list) honest the
+// next time StarterKit's bundled extension set changes.
 const ALLOWED_TAGS = [
-  'p', 'br', 'hr', 'strong', 'em', 's', 'code', 'pre',
+  'p', 'br', 'hr', 'strong', 'em', 's', 'u', 'a', 'code', 'pre',
   'h1', 'h2', 'h3', 'blockquote',
   'ul', 'ol', 'li',
   'span', 'img',
@@ -20,6 +26,12 @@ const ALLOWED_ATTRIBUTES = {
   // out of the sanitized HTML to populate Note.links.
   span: ['data-type', 'data-note-id'],
   img: ['src', 'alt'],
+  // target/rel are what Tiptap's Link extension actually emits
+  // (target="_blank" rel="noopener noreferrer nofollow" by default) —
+  // unlisted attributes are dropped silently by sanitize-html, so omitting
+  // these would keep the href but downgrade every link to same-tab with no
+  // rel hardening.
+  a: ['href', 'target', 'rel'],
 };
 
 // Anchors the src to exactly the shape POST /notes/upload-image generates
@@ -45,7 +57,20 @@ const sanitizeNoteHtml = (rawHtml) => {
   return sanitizeHtml(html, {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: ALLOWED_ATTRIBUTES,
-    allowedSchemes: [],
+    // Per-tag rather than the global `allowedSchemes` this used to be: img
+    // src is never scheme-based (it's checked below by
+    // UPLOAD_IMAGE_SRC_PATTERN instead — a bare relative path has no scheme
+    // for allowedSchemes to even inspect), so a global allow-list of
+    // http/https/mailto did nothing for images and would have quietly
+    // widened as soon as a tag that DOES need a scheme (a) was added. Scoping
+    // it to `a` keeps the img defense-in-depth comment above literally true.
+    // Note a scheme-less relative href (e.g. "/dashboard") always passes
+    // regardless of this list — sanitize-html's underlying `launder` check
+    // treats "no scheme" as not-dangerous — which is intended, not a gap.
+    allowedSchemesByTag: { a: ['http', 'https', 'mailto'] },
+    // Still blocks a bare `href="//evil.test"` (no scheme, but a host) even
+    // though it isn't caught by allowedSchemesByTag above — a separate check
+    // in sanitize-html, and the other half of what makes an href safe.
     allowProtocolRelative: false,
     disallowedTagsMode: 'discard',
     exclusiveFilter: (frame) => frame.tag === 'img' && !UPLOAD_IMAGE_SRC_PATTERN.test(frame.attribs.src || ''),

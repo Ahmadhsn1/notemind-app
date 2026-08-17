@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
-import DOMPurify from 'dompurify'
+import {sanitizeNoteHtml} from '../utils/sanitizeNoteHtml'
 import api from '../api/axios'
 import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
@@ -76,7 +76,7 @@ function AdminNoteVersionsModal({noteId, noteTitle, onClose}) {
 }
 
 function VersionRow({version, expanded, onToggle}) {
-	const safeHtml = useMemo(() => DOMPurify.sanitize(version.contentHtml || `<p>${version.body || ''}</p>`), [version])
+	const safeHtml = useMemo(() => sanitizeNoteHtml(version.contentHtml || `<p>${version.body || ''}</p>`), [version])
 
 	return (
 		<div className="rounded-[10px] bg-ink/5 border border-ink/10 overflow-hidden">

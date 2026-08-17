@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
-import DOMPurify from 'dompurify'
+import {sanitizeNoteHtml} from '../utils/sanitizeNoteHtml'
 import api from '../api/axios'
 import {withPendingImages, withSignedImages} from '../utils/noteImages'
 import useModalA11y from '../hooks/useModalA11y'
@@ -45,7 +45,7 @@ function AdminNoteDetailModal({noteId, onClose}) {
 	const pendingHtml = useMemo(() => {
 		if (!note) return ''
 		const html = note.contentHtml || `<p>${note.body || ''}</p>`
-		return withPendingImages(DOMPurify.sanitize(html))
+		return withPendingImages(sanitizeNoteHtml(html))
 	}, [note])
 
 	const [signedHtml, setSignedHtml] = useState(null)

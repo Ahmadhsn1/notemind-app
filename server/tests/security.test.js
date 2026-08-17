@@ -12,7 +12,6 @@ describe('HTML sanitization', () => {
   const mustStrip = [
     ['inline script', '<p>ok</p><script>alert(1)</script>'],
     ['event handler', '<p onclick="alert(1)">ok</p>'],
-    ['javascript: href', '<a href="javascript:alert(1)">click</a>'],
     ['iframe', '<iframe src="https://evil.test"></iframe>'],
     ['svg with script', '<svg><script>alert(1)</script></svg>'],
     ['object embed', '<object data="evil.swf"></object>'],
@@ -28,8 +27,38 @@ describe('HTML sanitization', () => {
     });
   }
 
+  // `a` and `u` are now allowed tags (see htmlSanitizer.js's comment on why),
+  // so a dangerous href must be proven stripped down to the bare attribute,
+  // not just "the response contains no recognizable script marker" — the old
+  // version of this suite would have kept passing even if the <a> tag itself
+  // (with a live javascript: href) had leaked through unstripped.
+  const dangerousHrefs = [
+    ['lowercase javascript:', 'javascript:alert(1)'],
+    ['mixed-case javascript:', 'JaVaScRiPt:alert(1)'],
+    ['HTML-entity-encoded javascript:', '&#106;avascript:alert(1)'],
+    ['data: URI', 'data:text/html,<script>alert(1)</script>'],
+    ['protocol-relative (no scheme, but a host)', '//evil.test/x'],
+  ];
+  for (const [name, href] of dangerousHrefs) {
+    it(`strips the href but keeps the link text for a ${name} href`, () => {
+      const clean = sanitizeNoteHtml(`<a href="${href}">click</a>`);
+      expect(clean).not.toMatch(/href/i);
+      expect(clean).toContain('click');
+    });
+  }
+
+  it('keeps a legitimate external link, with rel hardening, and mailto', () => {
+    const html = '<p>See <a href="https://example.com" target="_blank" rel="noopener noreferrer nofollow">example.com</a></p>';
+    expect(sanitizeNoteHtml(html)).toBe(html);
+    expect(sanitizeNoteHtml('<a href="mailto:a@b.com">email</a>')).toBe('<a href="mailto:a@b.com">email</a>');
+  });
+
+  it('keeps a same-origin relative href (no scheme to check, and not naughty)', () => {
+    expect(sanitizeNoteHtml('<a href="/dashboard">home</a>')).toBe('<a href="/dashboard">home</a>');
+  });
+
   it('keeps the formatting the editor legitimately produces', () => {
-    const html = '<h2>Title</h2><p><strong>bold</strong> <em>italic</em> <s>struck</s></p><ul><li>item</li></ul>';
+    const html = '<h2>Title</h2><p><strong>bold</strong> <em>italic</em> <s>struck</s> <u>underlined</u></p><ul><li>item</li></ul>';
     expect(sanitizeNoteHtml(html)).toBe(html);
   });
 
@@ -41,6 +70,16 @@ describe('HTML sanitization', () => {
   it('derives plain text without markup for AI prompts and keyword search', () => {
     expect(htmlToPlainText('<p>hello <strong>world</strong></p>')).toMatch(/hello world/);
     expect(htmlToPlainText('<p>hi</p>')).not.toMatch(/</);
+  });
+
+  // Anchor/underline text must survive into the plain-text body (it's what
+  // AI prompts and keyword search read) — but the href itself is inline
+  // metadata, not content, and htmlToPlainText's tag list is deliberately
+  // block-level-only, so it must not leak into the derived text either.
+  it('keeps link text but not the href URL in the derived plain text', () => {
+    const text = htmlToPlainText('<p>see <a href="https://example.com/secret-path">my site</a> and <u>this</u></p>');
+    expect(text).toBe('see my site and this');
+    expect(text).not.toMatch(/example\.com/);
   });
 });
 

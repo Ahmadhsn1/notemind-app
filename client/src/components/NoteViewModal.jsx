@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
-import DOMPurify from 'dompurify'
+import {sanitizeNoteHtml} from '../utils/sanitizeNoteHtml'
 import api from '../api/axios'
 import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
@@ -113,7 +113,7 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 	const pendingHtml = useMemo(() => {
 		if (!note) return ''
 		const html = note.contentHtml || legacyBodyToHtml(note.body)
-		return withPendingImages(DOMPurify.sanitize(html))
+		return withPendingImages(sanitizeNoteHtml(html))
 	}, [note])
 
 	// Phase two: swap in signed URLs once they arrive. `signedHtml` is cleared

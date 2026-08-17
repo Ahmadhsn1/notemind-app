@@ -197,6 +197,17 @@
     color: color-mix(in srgb, var(--color-ink) 55%, transparent);
   }
 
+  a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+    text-underline-offset: 2px;
+
+    &:hover {
+      text-decoration-color: var(--color-accent);
+    }
+  }
+
   code {
     background: color-mix(in srgb, var(--color-ink) 10%, transparent);
     border-radius: 4px;
