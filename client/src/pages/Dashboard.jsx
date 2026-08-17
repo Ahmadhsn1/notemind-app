@@ -1,5 +1,5 @@
 import {useState, useEffect, useCallback, useMemo} from 'react'
-import {useLocation, useNavigate} from 'react-router-dom'
+import {useLocation, useNavigate, useSearchParams} from 'react-router-dom'
 import api from '../api/axios'
 import {fetchAllNotes, NOTES_PAGE_SIZE, MAX_NOTE_PAGES} from '../api/notes'
 import {useAuth} from '../context/AuthContext'
@@ -60,6 +60,13 @@ function Dashboard() {
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 	const [isAskModalOpen, setIsAskModalOpen] = useState(false)
 	const [viewingNoteId, setViewingNoteId] = useState(null)
+	// Populated only by the ?note= deep-link effect below, for a note that
+	// isn't in the loaded `notes` array (outside the current view/folder/tag
+	// filter, or past the truncation ceiling) — fetched individually rather
+	// than left unopenable. Kept separate from `notes` on purpose: injecting
+	// a fetched note into that array would skew folder/tag counts and the
+	// grid itself with a note that may not belong to the current view.
+	const [deepLinkedNote, setDeepLinkedNote] = useState(null)
 	const [notesLoading, setNotesLoading] = useState(true)
 	const [notesError, setNotesError] = useState('')
 	const [semanticMatchIds, setSemanticMatchIds] = useState([])
@@ -89,6 +96,7 @@ function Dashboard() {
 	const toast = useToast()
 	const location = useLocation()
 	const navigate = useNavigate()
+	const [searchParams, setSearchParams] = useSearchParams()
 
 	// GET /notes is paginated server-side (bounded query rather than an
 	// unbounded scan); fetchAllNotes follows that pagination to completion.
@@ -141,6 +149,46 @@ function Dashboard() {
 		setViewingNoteId(location.state.openNoteId)
 		navigate(location.pathname, {replace: true, state: {}})
 	}, [notesLoading, location.state?.openNoteId])
+	/* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
+
+	// Bookmarkable/emailable per-note deep links (?note=<id>) — see the
+	// reminder email in services/scheduler.js, the only current producer of
+	// this URL. Same shape as the GraphView effect above (run once notes are
+	// loaded, then clear so it can't re-fire), but the target may genuinely
+	// not be in the loaded `notes` array — outside the active view/folder/
+	// tag filter, or past api/notes.js's truncation ceiling — so this falls
+	// back to fetching it individually via GET /notes/:id rather than
+	// leaving the modal silently unopenable.
+	/* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect -- syncing to a URL param, not derived local state; only re-run when loading finishes or the param itself changes */
+	useEffect(() => {
+		if (notesLoading) return
+		const noteId = searchParams.get('note')
+		if (!noteId) return
+
+		setSearchParams((prev) => {
+			const next = new URLSearchParams(prev)
+			next.delete('note')
+			return next
+		}, {replace: true})
+
+		if (notes.some((n) => n._id === noteId)) {
+			setViewingNoteId(noteId)
+			return
+		}
+
+		let ignore = false
+		;(async () => {
+			try {
+				const res = await api.get(`/notes/${noteId}`)
+				if (ignore) return
+				setDeepLinkedNote(res.data)
+				setViewingNoteId(noteId)
+			} catch {
+				if (!ignore) toast.error("Couldn't find that note — it may have been deleted.")
+			}
+		})()
+		return () => { ignore = true }
+	}, [notesLoading, searchParams])
 	/* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
 	// Semantic search augmentation (Phase 3): the substring filter below stays
@@ -218,9 +266,14 @@ function Dashboard() {
 	// current folder/search filter, where it won't be in sortedNotes — fall
 	// back to the full list so the modal still opens (prev/next just won't
 	// have a meaningful position for it, same as viewing any single result).
+	// Last resort: deepLinkedNote, set only by the ?note= effect above for a
+	// note this account owns but that isn't loaded at all (wrong view, past
+	// the truncation ceiling) — without this the modal would just never open.
 	const viewingNote = viewingIndex >= 0
 		? sortedNotes[viewingIndex]
-		: (viewingNoteId ? notes.find((n) => n._id === viewingNoteId) : null)
+		: viewingNoteId
+			? (notes.find((n) => n._id === viewingNoteId) || (deepLinkedNote?._id === viewingNoteId ? deepLinkedNote : null))
+			: null
 
 	const resetForm = () => {
 		setTitle('')
@@ -397,6 +450,7 @@ function Dashboard() {
 
 	const handleCloseView = () => {
 		setViewingNoteId(null)
+		setDeepLinkedNote(null)
 	}
 
 	const handleEditFromView = (note) => {

@@ -1,8 +1,9 @@
 import {GoogleOAuthProvider, GoogleLogin} from '@react-oauth/google'
-import {useNavigate} from 'react-router-dom'
+import {useNavigate, useLocation} from 'react-router-dom'
 import api from '../api/axios'
 import {useAuth} from '../context/AuthContext'
 import {useToast} from '../context/ToastContext'
+import {postLoginDestination} from '../utils/postLoginDestination'
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
@@ -13,6 +14,7 @@ function GoogleAuthButton() {
 	const {login} = useAuth()
 	const toast = useToast()
 	const navigate = useNavigate()
+	const location = useLocation()
 
 	if (!CLIENT_ID) return null
 
@@ -20,7 +22,7 @@ function GoogleAuthButton() {
 		try {
 			const response = await api.post('/auth/google', {credential: credentialResponse.credential})
 			login(response.data)
-			navigate('/dashboard')
+			navigate(postLoginDestination(location))
 		} catch (err) {
 			toast.error(err.response?.data?.message || 'Google sign-in failed. Try again.')
 		}

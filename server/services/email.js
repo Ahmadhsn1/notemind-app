@@ -125,18 +125,17 @@ const passwordResetEmail = (name, resetUrl, expiryMinutes) => ({
 });
 
 // Sent by services/scheduler.js the moment a note's reminderAt comes due.
-// dashboardUrl is just the bare /dashboard — there's no per-note deep-link
-// route in the client yet (Dashboard has no ?note= query-param handling), so
-// this can't jump straight to the note itself; it's a "something's due, go
-// look" nudge rather than a one-click link to that exact note.
-const reminderEmail = (name, noteTitle, dashboardUrl) => ({
+// noteUrl is a /dashboard?note=<id> deep link (see scheduler.js's noteUrl
+// helper) — Dashboard.jsx reads that query param and opens NoteViewModal
+// straight to this note, rather than just landing on the dashboard.
+const reminderEmail = (name, noteTitle, noteUrl) => ({
   subject: `Reminder: ${noteTitle}`,
   text: [
     `Hi ${name},`,
     '',
     `Your reminder for the note "${noteTitle}" is due.`,
     '',
-    dashboardUrl,
+    noteUrl,
   ].join('\n'),
   html: `
     <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a1a1a">
@@ -145,7 +144,7 @@ const reminderEmail = (name, noteTitle, dashboardUrl) => ({
         Hi ${name}, your reminder for <strong>${noteTitle}</strong> is due.
       </p>
       <p style="margin:0 0 24px">
-        <a href="${dashboardUrl}" style="display:inline-block;background:#5b5bd6;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-size:15px;font-weight:600">Open NoteMind</a>
+        <a href="${noteUrl}" style="display:inline-block;background:#5b5bd6;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-size:15px;font-weight:600">Open note</a>
       </p>
       <p style="font-size:13px;line-height:1.6;color:#666;margin:16px 0 0">
         Turn these off any time from Account → Email notifications.

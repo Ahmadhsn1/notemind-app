@@ -1,10 +1,11 @@
 import {useState, useRef, useEffect} from 'react'
-import {useNavigate, Link} from 'react-router-dom'
+import {useNavigate, useLocation, Link} from 'react-router-dom'
 import api from '../api/axios'
 import {useAuth} from '../context/AuthContext'
 import Watchers from '../components/Watchers'
 import Logo from '../components/Logo'
 import GoogleAuthButton from '../components/GoogleAuthButton'
+import {postLoginDestination} from '../utils/postLoginDestination'
 
 function Login() {
 	const [email, setEmail] = useState('')
@@ -22,6 +23,7 @@ function Login() {
 
 	const {login} = useAuth()
 	const navigate = useNavigate()
+	const location = useLocation()
 
 	const wantsNudge = showPassword && (focusedField === 'email' || focusedField === 'name')
 	const nudging = wantsNudge && !nudgeExpired
@@ -93,7 +95,7 @@ function Login() {
 		try {
 			const response = await api.post('/auth/login', {email, password})
 			login(response.data)
-			navigate('/dashboard')
+			navigate(postLoginDestination(location))
 		} catch (err) {
 			setError(err.response?.data?.message || 'Something went wrong')
 			setSubmitting(false)

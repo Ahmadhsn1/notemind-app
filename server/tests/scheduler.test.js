@@ -45,6 +45,9 @@ describe('services/scheduler — reminder emails', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].to).toBe(user.email);
     expect(sent[0].subject).toMatch(/Renew passport/);
+    // Deep-links straight to the note (Dashboard.jsx's ?note= handling),
+    // not just the bare dashboard.
+    expect(sent[0].text).toMatch(new RegExp(`/dashboard\\?note=${note._id}`));
 
     const updated = await Note.findById(note._id);
     expect(updated.reminderNotifiedAt).toBeInstanceOf(Date);

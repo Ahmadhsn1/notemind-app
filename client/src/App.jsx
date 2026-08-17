@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
@@ -30,6 +30,7 @@ const RouteFallback = () => (
 
 function App() {
   const { user } = useAuth();
+  const location = useLocation();
 
   return (
     <Routes>
@@ -45,7 +46,13 @@ function App() {
       <Route path="/terms" element={<Terms />} />
       <Route
         path="/dashboard"
-        element={user ? <Dashboard /> : <Navigate to="/login" />}
+        element={user ? <Dashboard /> : (
+          // state.from carries the full location (including ?note=... from
+          // a reminder email) so postLoginDestination.js can send the user
+          // back to it after signing in — plain `<Navigate to="/login" />`
+          // drops the query string entirely.
+          <Navigate to="/login" state={{from: location}} replace />
+        )}
       />
       <Route
         path="/graph"

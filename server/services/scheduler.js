@@ -18,6 +18,12 @@ const aiService = require('./aiService');
 // ever notice "a reminder just came due" or "a week has passed".
 const dashboardUrl = () => `${env.allowedOrigins[0]}/dashboard`;
 
+// The reminder email can now jump straight to the note (Dashboard.jsx reads
+// ?note=<id> and opens NoteViewModal for it — see the deep-link effect
+// there), unlike the plain dashboardUrl() the weekly digest still uses,
+// which has no single note to point at.
+const noteUrl = (noteId) => `${dashboardUrl()}?note=${noteId}`;
+
 // Mirrors noteController.getDigest's own window/limit — duplicated rather
 // than imported, since that module only exports controller functions shaped
 // around (req, res), not a reusable "get this user's recent notes" call.
@@ -55,7 +61,7 @@ const checkDueReminders = async () => {
     }
 
     try {
-      const { subject, html, text } = emailService.reminderEmail(note.user.name, note.title, dashboardUrl());
+      const { subject, html, text } = emailService.reminderEmail(note.user.name, note.title, noteUrl(note._id));
       await emailService.sendEmail({ to: note.user.email, subject, html, text });
       note.reminderNotifiedAt = new Date();
       await note.save();
