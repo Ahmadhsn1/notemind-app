@@ -1,25 +1,43 @@
 # NoteMind
 
-An AI-augmented note-taking platform built on the MERN stack. Notes are
-semantically searchable, answerable in natural language, convertible into
-spaced-repetition flashcards, and connected to each other through wikilinks
-rendered as a force-directed graph.
+**Notes that think with you.**
+
+An AI-augmented note-taking platform built on the MERN stack, engineered to
+production standards rather than prototype standards. Notes are semantically
+searchable, answerable in natural language with cited sources, convertible
+into spaced-repetition flashcards, and connected to each other through
+wikilinks rendered as a live force-directed graph — all free, with no ads
+and no paid tier.
+
+[![CI](https://github.com/Ahmadhsn1/notemind-app/actions/workflows/ci.yml/badge.svg)](https://github.com/Ahmadhsn1/notemind-app/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white)
+![License](https://img.shields.io/badge/license-ISC-blue)
+
+```
+159 tests · 0 vulnerabilities · 79 API routes · 9 collections · 13 test suites
+```
 
 Beyond the product surface, this repository is a study in taking a working
-prototype to production: session revocation, per-file signed asset URLs,
-cascading data-integrity guarantees, per-user cost controls on metered AI, and
-a test suite built specifically around the invariants the security model rests
-on.
+prototype to production: session revocation on every request, per-file
+signed asset URLs, cascading data-integrity guarantees, per-user cost
+controls on metered AI, DST-safe date arithmetic, and a test suite built
+specifically around the invariants the security model rests on — validated
+by reintroducing real, previously-shipped bugs and confirming the suite
+actually catches each one.
 
-```
-109 tests · 0 vulnerabilities · 74 API routes · 9 collections
-```
+<p align="center">
+  <img src="docs/screenshots/landing.png" alt="NoteMind landing page" width="100%">
+</p>
 
 ---
 
 ## Contents
 
 - [Feature overview](#feature-overview)
+- [Screenshots](#screenshots)
 - [Architecture](#architecture)
 - [Engineering notes](#engineering-notes)
 - [Getting started](#getting-started)
@@ -28,6 +46,7 @@ on.
 - [Testing](#testing)
 - [Operations](#operations)
 - [Deployment](#deployment)
+- [Security summary](#security-summary)
 
 ---
 
@@ -35,47 +54,57 @@ on.
 
 ### Notes
 
-A Tiptap rich-text editor with slash commands, task lists, code blocks, image
-paste-and-upload, and `[[wikilink]]` note references. Notes carry tags,
-folders, pins, reminders, and a full lifecycle — active, archived, and a trash
-that hard-deletes after 30 days.
+A Tiptap rich-text editor with slash commands, task lists, code blocks,
+hyperlinks, image paste-and-upload, and `[[wikilink]]` note references.
+Notes carry tags, folders, pins, reminders, and a full lifecycle — active,
+archived, and a trash that hard-deletes after 30 days.
 
 Every content-touching save snapshots the previous version, so any edit is
-reversible; restoring a version snapshots the pre-restore state first, making
-restores themselves undoable.
+reversible; restoring a version snapshots the pre-restore state first,
+making restores themselves undoable. Every note also has its own
+bookmarkable URL, and can be turned into a public read-only link that
+requires no account to view — revoked instantly, any time, by its owner.
 
 ### AI (Google Gemini)
 
 | Capability | How it works |
 |---|---|
-| **Cross-note Q&A** | Retrieval over the user's notes, answer streamed token-by-token |
-| **Semantic search** | 768-dimensional embeddings, cosine similarity, keyword fallback |
+| **Cross-note Q&A** | Retrieval over the user's notes, answer streamed token-by-token, sources cited |
+| **Semantic search** | 768-dimensional embeddings, cosine similarity, automatic keyword fallback |
 | **Auto-tagging & summaries** | Strict-JSON prompting with fence stripping and retry |
 | **Title suggestions** | Generated from note body on demand |
 | **Writing assist** | Rewrite, expand, summarise, fix tone — applied inline in the editor |
-| **Weekly digest** | Recap widget over the last seven days |
+| **Weekly digest** | AI recap of the last seven days, in-app and by email |
+| **Daily resurfacing** | An older note surfaced with an AI-written reflection prompt |
 | **Flashcard generation** | Q&A pairs extracted from a note, fed into SM-2 review scheduling |
 
 Retrieval prefers semantic similarity per note and falls back to keyword
 overlap when an embedding is unavailable — so a note saved before embeddings
 existed, or during a Gemini outage, still participates in results rather than
-disappearing from them.
+disappearing from them. A pool of Gemini API keys round-robins across
+whichever keys aren't currently rate-limited, with per-key cooldowns that
+respect Google's own daily-vs-per-minute quota semantics rather than a single
+fixed backoff.
 
 ### Knowledge tools
 
-- **Spaced repetition** — SM-2 scheduling, due queue, review streaks
+- **Spaced repetition** — SM-2 scheduling, a due-today queue spanning every
+  deck, separate write and review streaks, and an activity calendar
 - **Graph view** — d3-force layout of wikilinked notes; unlinked notes are
   listed separately rather than scattered as disconnected dots
-- **Backlinks** — computed both directions, in-note
-- **Daily resurfacing** — one older note surfaced per day, with a reflection
-  streak keyed on actually replying, not merely viewing
+- **Click-to-filter tags and folders** — organize without a second system
+- **Backlinks** — computed both directions, shown in-note
+- **Public sharing** — any note becomes a branded, read-only public page in
+  one click, with its own unauthenticated API route and per-image signed
+  URLs so shared attachments render without exposing the owner's storage
 
 ### Accounts
 
 Email/password and Google Sign-In, profile management, password change,
 self-service data export (JSON and Markdown ZIP), and account deletion with
 full cascade. Password reset by email with hashed, single-use, expiring
-tokens.
+tokens. Reminder and weekly-digest emails are opt-out per user, never cold
+marketing.
 
 ### Admin
 
@@ -89,7 +118,30 @@ configuration.
 
 Installable PWA with an offline-read service worker: cache-first hashed
 assets, network-first app shell, and stale-while-revalidate note reads
-partitioned per user.
+partitioned per user. A public marketing site — landing page, full feature
+list, audience-specific use cases, and a running changelog — is served from
+the same SPA build.
+
+---
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%">
+
+**Dashboard**
+<img src="docs/screenshots/dashboard.png" alt="Dashboard with pinned notes, folders, tags, and activity" width="100%">
+
+</td>
+<td width="50%">
+
+**Graph view**
+<img src="docs/screenshots/graph-view.png" alt="Force-directed graph of wikilinked notes" width="100%">
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -103,8 +155,8 @@ notemind-app/
 │   └── src/
 │       ├── api/                   Axios instance, 401 handling, pagination
 │       ├── components/editor/     Tiptap extensions (slash menu, wikilinks)
-│       ├── context/               Auth, theme, toast, notifications
-│       ├── pages/                 Route-level views
+│       ├── context/                Auth, theme, toast, notifications
+│       ├── pages/                 Route-level views, incl. the public site
 │       └── utils/                 Pure helpers
 │
 └── server/                        Express 5 · Mongoose · Socket.IO → Render
@@ -114,8 +166,8 @@ notemind-app/
     ├── controllers/               Route handlers
     ├── middleware/                Auth, admin, validation, rate limit, AI quota
     ├── models/                    9 Mongoose schemas
-    ├── routes/                    74 route definitions
-    ├── services/                  AI, email, storage, cleanup, sockets, logging
+    ├── routes/                    79 route definitions
+    ├── services/                  AI, email, storage, cleanup, sockets, scheduler
     ├── scripts/                   Maintenance and migration
     ├── tests/                     Vitest + Supertest, in-memory MongoDB
     └── validators/                Zod request schemas
@@ -142,7 +194,7 @@ A JWT signature proves a token was issued; it does not prove the account still
 exists or is still permitted. `protect` therefore loads the user on every
 authenticated request, so deletion and suspension take effect immediately
 rather than at token expiry up to seven days later. This costs nothing extra —
-the middleware already wrote `lastActiveAt` per request.
+the middleware already writes `lastActiveAt` per request.
 
 `passwordChangedAt` extends this into real revocation: a password reset
 invalidates every token issued before it, which matters because a reset is
@@ -169,7 +221,37 @@ Instead, a protected endpoint verifies ownership and returns per-file HMAC
 signatures with a one-hour expiry; the public route only verifies. Signing
 each file individually — rather than issuing one token covering a user's whole
 library — keeps a leaked URL worth exactly one image, as it was before, while
-adding an expiry it never had.
+adding an expiry it never had. Shared public notes reuse the same signing
+primitive, so an image in a note published to strangers is exposed for
+exactly that one file, never the owner's storage.
+
+### Sharing tokens are stored recoverable, not hashed
+
+A password-reset token is hashed because it's a bearer secret used once and
+never needs to be shown to a human again — the raw value only ever lived in
+an email. A note-sharing token is different: it grants ongoing read access to
+something the owner explicitly chose to publish, and the owner needs to
+revisit the *same* link later, possibly from another device. Hashing would
+make that link unrecoverable. Its own 160 bits of entropy from
+`crypto.randomBytes` is what makes it safe — the same trust model an unlisted
+Google Doc or Notion share link already relies on.
+
+Revoking clears the field with `$unset`, never by setting it to `null` —
+MongoDB's sparse unique index only exempts a field that's genuinely *absent*
+from a document, not one present holding `null`. Two unshared notes both
+holding `null` would collide on the unique constraint the moment the second
+one saved.
+
+### Streak math survives Daylight Saving Time
+
+Stepping backward through days with fixed `86,400,000`ms arithmetic breaks
+twice a year: a spring-forward day is only 23 hours of real time, so
+subtracting a full day silently skips a calendar day; a fall-back day is 25
+hours and double-counts one. Every streak calculation now steps using the
+`Date` object's own local-time setters, which the JS engine re-normalizes
+correctly across the transition — proven with a test that pins the system
+clock to a real DST boundary and fails outright against the old
+implementation.
 
 ### Metered AI needs per-user accounting
 
@@ -202,6 +284,18 @@ the next person to sign in on a shared machine. The cache is now partitioned
 by user id, derived from the token already present on the request — which
 avoids the alternative design's race, where a fetch can be handled before the
 worker learns who is signed in.
+
+### Focus can be stolen between chained modals
+
+React commits every effect cleanup for a tree before running any new effect.
+Opening a template picker and immediately opening the note editor from it
+meant the picker's own focus-restore cleanup ran *after* the editor's native
+`autoFocus` had already fired — silently clobbering it and leaving focus on
+the editor's close button instead of its title field. The shared focus-trap
+hook now checks whether focus is still inside its own panel before
+restoring it; if something else has already claimed focus, it backs off. Not
+something a lint rule or a unit test would ever surface — found by actually
+clicking through the flow in a browser and checking `document.activeElement`.
 
 ---
 
@@ -365,9 +459,10 @@ deliberate exception — see below.
 | GET · POST · DELETE | `/notifications…` | Broadcasts |
 | GET | `/audit-log` | Append-only record of admin actions |
 
-Every admin mutation refuses to act on the acting admin's own account, and is
-written to the audit log with a plain-text snapshot of the target — the target
-may since have been deleted, and the log must stay readable.
+Every admin mutation refuses to act on the acting admin's own account, is
+guarded against ever dropping the last remaining admin, and is written to the
+audit log with a plain-text snapshot of the target — the target may since
+have been deleted, and the log must stay readable.
 
 </details>
 
@@ -397,7 +492,7 @@ cd server && npm test
 ```
 
 Vitest + Supertest against an in-memory MongoDB — no external services, no
-fixtures to reset, no shared state between runs. 109 tests across 9 files.
+fixtures to reset, no shared state between runs. 159 tests across 13 files.
 
 Coverage is targeted rather than exhaustive: it covers the invariants that
 carry the security model, chosen so that breaking one fails loudly.
@@ -413,10 +508,13 @@ carry the security model, chosen so that breaking one fails loudly.
 | `googleLink` | Identity linking rules, including the account pre-hijacking case |
 | `account` | Password/Google account state; deletion cascade |
 | `email` | Provider selection; half-configured backends refuse to boot |
+| `adminGuards` | The last remaining admin can never be demoted or deleted through the admin surface |
+| `streaks` | Note, flashcard, and resurfacing streaks stay correct across a real DST boundary |
+| `shareNote` | Full share lifecycle — create, idempotency, revoke, and that the public payload never leaks owner identity |
 
-The suite was validated by reintroducing three previously fixed bugs and
-confirming each was caught — a test that passes with the defect present is
-worse than no test, because it manufactures confidence.
+The suite was validated by reintroducing previously fixed bugs and confirming
+each one was caught — a test that passes with the defect present is worse
+than no test, because it manufactures confidence.
 
 Client checks:
 
@@ -434,11 +532,16 @@ The redaction list covers authorization headers, passwords, note bodies,
 the offending document, which for this app means note content in plaintext
 logs.
 
-**Rate limiting.** Auth, AI, upload, export and global limiters backed by a
-custom MongoDB store. The obvious off-the-shelf package depends on a version
-of `underscore` carrying an unpatched advisory; taking a known-vulnerable
-transitive dependency in order to *fix* a security problem is a bad trade, so
-the store is ~40 lines against the existing connection.
+**Rate limiting.** Auth, AI, upload, export, public-share and global limiters
+backed by a custom MongoDB store. The obvious off-the-shelf package depends on
+a version of `underscore` carrying an unpatched advisory; taking a
+known-vulnerable transitive dependency in order to *fix* a security problem
+is a bad trade, so the store is ~40 lines against the existing connection.
+
+**Scheduled jobs.** A lightweight cron layer checks for due reminders every
+five minutes and sends a weekly AI digest every Monday — both opt-out per
+user, both degrading silently (not erroring) when no email provider is
+configured.
 
 **Graceful shutdown.** `SIGTERM` drains in-flight requests, closes Socket.IO
 with proper disconnect frames, and closes Mongoose — otherwise every deploy
@@ -466,10 +569,6 @@ severs streaming responses mid-write and triggers a client reconnect storm.
 | Object storage | Cloudflare R2 |
 | Email | Gmail SMTP or Resend |
 
-Step-by-step deployment instructions and the outstanding-work tracker live in
-the private `notemind-claude-config` repo, alongside this project's other
-internal planning docs.
-
 **Why the API is not also on Vercel.** Vercel supports WebSockets, but a
 connection is pinned to whichever function instance accepted it, with no
 cross-instance broadcasting. Admin live updates and notification pushes emit
@@ -478,14 +577,15 @@ instance would never receive an event emitted from another. The badge would
 read "Live" while nothing updated. Consolidating onto one platform requires a
 Redis pub/sub backplane first.
 
-CI runs client lint and build, the server test suite, and a Docker image build
-on every push and pull request.
+CI runs client lint and build, the full server test suite, and a Docker image
+build on every push and pull request against `main`.
 
 ---
 
 ## Security summary
 
-- Bearer-token sessions, verified against the database on every request
+- Bearer-token sessions, verified against the database on every request —
+  deletion and suspension take effect immediately, not at token expiry
 - Passwords hashed with bcrypt; reset tokens stored SHA-256 hashed — a fast
   hash is correct there, since a 32-byte random token has no dictionary to
   attack and lookup must stay a single indexed query
@@ -494,13 +594,15 @@ on every push and pull request.
 - Uploads validated by magic bytes, not declared MIME type; SVG excluded
   because it carries script and no byte check would catch it
 - Ownership enforced per resource, never inferred from query scoping alone
+- The admin surface can never be used to drop the platform to zero admins
 - Zod validation on every write; unknown keys stripped, so no mass assignment
 - `helmet`, CORS allowlist, CSP, body size limits, `trust proxy`
 - No secrets in the repository; configuration validated at boot
+- Zero known vulnerabilities in either package tree (`npm audit`, both
+  `client/` and `server/`)
 
 ---
 
 ## License
 
 ISC
-
