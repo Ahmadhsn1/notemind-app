@@ -6,6 +6,7 @@ import Terms from './pages/Terms';
 import NotFound from './pages/NotFound';
 import WhatsNew from './pages/WhatsNew';
 import Features from './pages/Features';
+import UseCases from './pages/UseCases';
 import Share from './pages/Share';
 import Register from './pages/Register';
 import Login from './pages/Login'
@@ -49,6 +50,7 @@ function App() {
       <Route path="/terms" element={<Terms />} />
       <Route path="/whats-new" element={<WhatsNew />} />
       <Route path="/features" element={<Features />} />
+      <Route path="/use-cases" element={<UseCases />} />
       {/* Public, unauthenticated — the whole point of a shared note. See
           Share.jsx and server/controllers/publicNoteController.js. */}
       <Route path="/share/:token" element={<Share />} />

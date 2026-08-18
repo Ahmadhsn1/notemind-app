@@ -108,7 +108,7 @@ function Login() {
 				<Watchers mode={watcherMode} bounceKey={bounceKey} />
 				<div className="w-full max-w-[520px] rounded-[20px] border border-ink/15 bg-ink/7 backdrop-blur-[18px] py-8 px-6 min-[481px]:py-14 min-[481px]:px-[52px]">
 					<Logo size={34} textSize="text-[34px]" className="justify-center mb-1.5" />
-					<p className="text-center text-[15px] text-ink/55 mb-[34px]">Your thoughts, organized and alive</p>
+					<p className="text-center text-[15px] text-ink/55 mb-[34px]">Notes that think with you</p>
 					<form onSubmit={handleSubmit} ref={formRef} className="flex flex-col gap-[18px]">
 						<input
 							type="email"

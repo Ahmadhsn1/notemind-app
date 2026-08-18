@@ -163,6 +163,9 @@ function Features() {
 								<h2 className="text-[clamp(22px,3.5vw,30px)] font-extrabold leading-[1.15] mb-4">All of it, from your first note.</h2>
 								<p className="text-[14.5px] text-ink/60 max-w-[440px] mx-auto mb-8">No tier, no trial, no card. Just create an account.</p>
 								<Link to="/register" className="btn-primary px-8 py-3.5 text-[15px] no-underline">Create your free account</Link>
+								<p className="mt-4">
+									<Link to="/use-cases" className="text-[12.5px] font-semibold text-ink/50 no-underline hover:text-ink/75">Not sure it's for you? See real use cases →</Link>
+								</p>
 							</>
 						)}
 					</div>
@@ -176,6 +179,7 @@ function Features() {
 						<p className="text-[12px] text-ink/40">© {new Date().getFullYear()} NoteMind. All rights reserved.</p>
 					</div>
 					<nav className="flex items-center gap-5 text-[12.5px]">
+						<Link to="/use-cases" className="text-ink/45 hover:text-ink no-underline">Use cases</Link>
 						<Link to="/whats-new" className="text-ink/45 hover:text-ink no-underline">What's new</Link>
 						<Link to="/privacy" className="text-ink/45 hover:text-ink no-underline">Privacy</Link>
 						<Link to="/terms" className="text-ink/45 hover:text-ink no-underline">Terms</Link>

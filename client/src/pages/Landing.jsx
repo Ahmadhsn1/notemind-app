@@ -222,7 +222,10 @@ function Landing() {
 							</div>
 						))}
 					</div>
-					<p className="text-center mt-8">
+					<p className="text-center mt-8 flex items-center justify-center gap-5 flex-wrap">
+						<Link to="/use-cases" className="text-[13.5px] font-semibold text-accent no-underline hover:opacity-80">
+							See who it's for →
+						</Link>
 						<Link to="/features" className="text-[13.5px] font-semibold text-accent no-underline hover:opacity-80">
 							See everything NoteMind does →
 						</Link>
@@ -313,6 +316,7 @@ function Landing() {
 						<p className="text-[12px] text-ink/40">© {new Date().getFullYear()} NoteMind. All rights reserved.</p>
 					</div>
 					<nav className="flex items-center gap-5 text-[12.5px]">
+						<Link to="/use-cases" className="text-ink/45 hover:text-ink no-underline">Use cases</Link>
 						<Link to="/whats-new" className="text-ink/45 hover:text-ink no-underline">What's new</Link>
 						<Link to="/privacy" className="text-ink/45 hover:text-ink no-underline">Privacy</Link>
 						<Link to="/terms" className="text-ink/45 hover:text-ink no-underline">Terms</Link>
