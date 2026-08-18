@@ -5,7 +5,7 @@ import LegalPageLayout from '../components/LegalPageLayout'
 // monetization path; keep this and Privacy.jsx in sync if that changes.
 function Terms() {
 	return (
-		<LegalPageLayout title="Terms of Service" updated="August 17, 2026">
+		<LegalPageLayout title="Terms of Service" updated="August 18, 2026">
 			<p>
 				These terms cover your use of NoteMind. By creating an account you agree to them. If you
 				don't agree, please don't use the app — and email us at{' '}
@@ -40,6 +40,11 @@ function Terms() {
 				You own what you write in NoteMind. We don't claim any ownership over your notes. By using
 				an AI feature, you're asking us to send the relevant content to Google's Gemini API to
 				generate that specific response — see our <a href="/privacy">Privacy Policy</a> for details.
+			</p>
+			<p>
+				If you choose to share a note, you're responsible for what that note contains and who you
+				give the link to — anyone with a shared note's link can view it without an account. You can
+				turn sharing off for any note at any time, which immediately invalidates that link.
 			</p>
 
 			<h2>AI features</h2>

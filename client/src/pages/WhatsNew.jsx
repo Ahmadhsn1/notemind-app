@@ -15,6 +15,12 @@ const ENTRIES = [
 	{
 		date: 'August 2026',
 		tag: 'New',
+		title: 'Share a note publicly',
+		body: 'Turn any note into a read-only link anyone can open — no account needed. Open the Share icon on any note to create the link, and turn it off any time to make the old link stop working immediately.',
+	},
+	{
+		date: 'August 2026',
+		tag: 'New',
 		title: 'Jump straight to a note from anywhere',
 		body: 'Every note now has its own link. Reminder emails open the exact note that\'s due — not just the dashboard — and any note\'s link can be bookmarked or shared with yourself.',
 	},

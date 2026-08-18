@@ -45,6 +45,14 @@ const globalLimiter = build('global', 1000, 'Too many requests. Slow down.');
 // than anything else in the app, and nobody legitimately needs many per hour.
 const exportLimiter = build('export', 10, 'Too many export requests. Try again later.');
 
+// GET /api/public/notes/:token is the app's only unauthenticated data route
+// — there's no per-account quota to fall back on the way every other
+// limiter here has, so this IP-based limit is the entire defense against
+// someone scripting a scrape of shared notes. Generous enough for a link
+// getting real traffic (someone reposting it, a small team all opening it)
+// without being a scraping-friendly ceiling.
+const publicShareLimiter = build('public-share', 60, 'Too many requests. Try again later.');
+
 // Static config mirror for the admin System tab — express-rate-limit doesn't
 // expose a stable public API to read a limiter's own config back out.
 const rateLimitConfig = {
@@ -53,6 +61,7 @@ const rateLimitConfig = {
   upload: { windowMs: WINDOW_MS, limit: 30, scope: 'image uploads' },
   global: { windowMs: WINDOW_MS, limit: 1000, scope: 'all API routes' },
   export: { windowMs: WINDOW_MS, limit: 10, scope: 'data exports' },
+  publicShare: { windowMs: WINDOW_MS, limit: 60, scope: 'public shared-note views' },
 };
 
-module.exports = { authLimiter, aiLimiter, uploadLimiter, globalLimiter, exportLimiter, rateLimitConfig };
+module.exports = { authLimiter, aiLimiter, uploadLimiter, globalLimiter, exportLimiter, publicShareLimiter, rateLimitConfig };

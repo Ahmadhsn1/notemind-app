@@ -64,7 +64,8 @@ const CATEGORIES = [
 			{icon: ICONS.pin, title: 'Pin what matters', body: 'Pinned notes stay at the top of your dashboard until you unpin them, no matter how much else you write.'},
 			{icon: ICONS.link, title: '[[Wikilinks]] & backlinks', body: 'Link notes to each other as you type, and see what links back to the note you\'re reading — your own web of ideas, built as you go.'},
 			{icon: ICONS.graph, title: 'Graph view', body: 'A live, explorable map of every linked note, laid out automatically so you can see how your thinking actually connects.'},
-			{icon: ICONS.link, title: 'Shareable note links', body: 'Every note has its own link — bookmark it, and reminder emails jump straight to the exact note that\'s due.'},
+			{icon: ICONS.link, title: 'Bookmarkable notes', body: 'Every note has its own link — bookmark it, and reminder emails jump straight to the exact note that\'s due.'},
+			{icon: ICONS.link, title: 'Share a note publicly', body: 'Turn any note into a read-only link anyone can open — no account needed. Turn it off any time and the old link stops working.'},
 		],
 	},
 	{

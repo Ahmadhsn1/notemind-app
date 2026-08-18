@@ -15,6 +15,12 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 	const [restoringId, setRestoringId] = useState(null)
 	const [versionsForNoteId, setVersionsForNoteId] = useState(note?._id)
 	const [generatingFlashcards, setGeneratingFlashcards] = useState(false)
+	// null = not yet checked; {shared:false} | {shared:true, shareUrl, sharedAt}
+	const [showShare, setShowShare] = useState(false)
+	const [shareStatus, setShareStatus] = useState(null)
+	const [shareForNoteId, setShareForNoteId] = useState(note?._id)
+	const [shareLoading, setShareLoading] = useState(false)
+	const [linkCopied, setLinkCopied] = useState(false)
 	const toast = useToast()
 
 	// Collapsed and refetched fresh each time a different note is opened — no
@@ -27,6 +33,13 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 		setVersionsForNoteId(note?._id)
 		setShowVersions(false)
 		setVersions([])
+	}
+	// Same pattern for the share panel — a link/status for the previously
+	// viewed note must never bleed into the one now on screen.
+	if (note?._id !== shareForNoteId) {
+		setShareForNoteId(note?._id)
+		setShowShare(false)
+		setShareStatus(null)
 	}
 
 	// Escape is handled by useModalA11y below (shared with every other
@@ -64,6 +77,71 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 		const next = !showVersions
 		setShowVersions(next)
 		if (next && versions.length === 0) loadVersions()
+	}
+
+	const loadShareStatus = async () => {
+		if (!note) return
+		setShareLoading(true)
+		try {
+			const response = await api.get(`/notes/${note._id}/share`)
+			setShareStatus(response.data)
+		} catch {
+			toast.error('Could not load sharing status.')
+		} finally {
+			setShareLoading(false)
+		}
+	}
+
+	const toggleShare = () => {
+		const next = !showShare
+		setShowShare(next)
+		if (next && shareStatus === null) loadShareStatus()
+	}
+
+	// Idempotent server-side too (see noteController.shareNote) — calling
+	// this on an already-shared note just returns the existing link, so
+	// there's no risk of a double-click minting two different links.
+	const handleShare = async () => {
+		if (!note) return
+		setShareLoading(true)
+		try {
+			const response = await api.post(`/notes/${note._id}/share`)
+			setShareStatus(response.data)
+			toast.success('Note is now shared.')
+		} catch (err) {
+			toast.error(err.response?.data?.message || 'Could not share this note.')
+		} finally {
+			setShareLoading(false)
+		}
+	}
+
+	// No confirm dialog — same "reversible actions don't need one" convention
+	// as version restore above: sharing again produces a fresh link in one
+	// click, so revoking isn't a one-way door.
+	const handleUnshare = async () => {
+		if (!note) return
+		setShareLoading(true)
+		try {
+			await api.delete(`/notes/${note._id}/share`)
+			setShareStatus({shared: false})
+			toast.success('Sharing turned off. The old link no longer works.')
+		} catch {
+			toast.error('Could not turn off sharing. Try again.')
+		} finally {
+			setShareLoading(false)
+		}
+	}
+
+	const handleCopyShareLink = async () => {
+		if (!shareStatus?.shareUrl) return
+		try {
+			await navigator.clipboard.writeText(shareStatus.shareUrl)
+			setLinkCopied(true)
+			setTimeout(() => setLinkCopied(false), 2000)
+		} catch {
+			// Clipboard API can fail (permissions, insecure context) — the link
+			// stays visible and selectable in the input either way.
+		}
 	}
 
 	// No confirm dialog — restoring snapshots the current (pre-restore) state
@@ -200,12 +278,64 @@ function NoteViewModal({isOpen, note, notes, onClose, onEdit, onPrev, onNext, on
 						<span className="w-2 h-2 rounded-full shrink-0" style={{background: folderColor(note.folder)}} />
 						<h3 className="text-ink text-base font-bold break-words">{note.title}</h3>
 					</div>
-					<button
-						onClick={onClose}
-						aria-label="Close"
-						className="w-7 h-7 p-0 shrink-0 rounded-[8px] bg-ink/6 border-none text-ink/62 text-xs font-semibold cursor-pointer transition-[opacity,transform] duration-200 hover:bg-ink/10 hover:opacity-100 active:scale-[0.98]"
-					>✕</button>
+					<div className="flex items-center gap-1.5 shrink-0">
+						<button
+							onClick={toggleShare}
+							aria-label={showShare ? 'Hide sharing options' : 'Share this note'}
+							title="Share"
+							className={`w-7 h-7 p-0 rounded-[8px] border-none text-xs font-semibold cursor-pointer transition-[opacity,transform] duration-200 active:scale-[0.98] flex items-center justify-center ${
+								shareStatus?.shared ? 'bg-accent/22 text-accent hover:bg-accent/30' : 'bg-ink/6 text-ink/62 hover:bg-ink/10 hover:opacity-100'
+							}`}
+						>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 15l6-6" /><path d="M11 5l1-1a4 4 0 0 1 6 6l-1 1" /><path d="M13 19l-1 1a4 4 0 0 1-6-6l1-1" /></svg>
+						</button>
+						<button
+							onClick={onClose}
+							aria-label="Close"
+							className="w-7 h-7 p-0 shrink-0 rounded-[8px] bg-ink/6 border-none text-ink/62 text-xs font-semibold cursor-pointer transition-[opacity,transform] duration-200 hover:bg-ink/10 hover:opacity-100 active:scale-[0.98]"
+						>✕</button>
+					</div>
 				</div>
+
+				{showShare && (
+					<div className="rounded-[10px] bg-ink/5 border border-ink/10 p-3 flex flex-col gap-2.5">
+						{shareLoading && shareStatus === null ? (
+							<p className="text-[12px] text-ink/40">Checking sharing status…</p>
+						) : (note.archivedAt || note.deletedAt) ? (
+							<p className="text-[12px] text-ink/50">Restore this note before sharing it.</p>
+						) : shareStatus?.shared ? (
+							<>
+								<p className="text-[12px] text-ink/55">Anyone with this link can read this note — no account needed.</p>
+								<div className="flex items-center gap-2">
+									<input
+										readOnly
+										value={shareStatus.shareUrl}
+										onFocus={(e) => e.target.select()}
+										className="flex-1 min-w-0 py-2 px-2.5 rounded-[8px] bg-ink/8 border border-ink/12 text-[12px] text-ink/75 font-mono"
+									/>
+									<button
+										onClick={handleCopyShareLink}
+										className="shrink-0 py-2 px-2.5 rounded-[8px] text-[11.5px] font-semibold bg-ink/8 border border-ink/15 text-ink/75 cursor-pointer transition-colors duration-150 hover:bg-ink/12"
+									>{linkCopied ? 'Copied!' : 'Copy'}</button>
+								</div>
+								<button
+									onClick={handleUnshare}
+									disabled={shareLoading}
+									className="self-start text-[11.5px] font-semibold text-danger-light cursor-pointer transition-opacity duration-150 hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+								>Stop sharing</button>
+							</>
+						) : (
+							<>
+								<p className="text-[12px] text-ink/55">This note is private. Sharing creates a public link — no login needed to view it.</p>
+								<button
+									onClick={handleShare}
+									disabled={shareLoading}
+									className="btn-primary self-start py-2 px-3.5 text-[12.5px] disabled:opacity-50 disabled:cursor-not-allowed"
+								>{shareLoading ? 'Sharing…' : 'Create share link'}</button>
+							</>
+						)}
+					</div>
+				)}
 
 				<div className="text-[11px] text-ink/42">{note.folder} · {relativeTime(note.createdAt)}</div>
 

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const env = require('../config/env');
 const Note = require('../models/Note');
 const NoteVersion = require('../models/NoteVersion');
 const { summarizeAndTag, streamAnswerFromNotes, STREAM_META_DELIMITER, stripJsonFences, generateTitle, assistWriting, embedText, cosineSimilarity, generateWeeklyDigest } = require('../services/aiService');
@@ -349,6 +350,62 @@ const unarchiveNote = async (req, res) => {
   const note = await Note.findByIdAndUpdate(req.params.id, { archivedAt: null }, { new: true });
   if (!note) throw new HttpError(404, 'Note not found');
   res.status(200).json(note);
+};
+
+// See models/Note.js's shareToken field comment for why this is stored
+// recoverable rather than hashed. crypto.randomBytes(20) is 160 bits of
+// entropy — base64url keeps it URL-safe with no encoding surprises, at
+// ~27 characters.
+const generateShareToken = () => crypto.randomBytes(20).toString('base64url');
+
+const shareUrlFor = (token) => `${env.allowedOrigins[0]}/share/${token}`;
+
+// Read-only status check — deliberately separate from shareNote below and
+// never creates anything, so a user opening the "Share" panel just to look
+// doesn't accidentally publish the note. shareToken/sharedAt are
+// select:false (see the model), so they must be requested explicitly here;
+// loadOwnedNote's own findById never carries them.
+const getShareStatus = async (req, res) => {
+  const owned = await loadOwnedNote(req.params.id, req.user.id, 'view sharing status for');
+  const note = await Note.findById(owned._id).select('+shareToken +sharedAt');
+
+  if (!note.shareToken) return res.status(200).json({ shared: false });
+  res.status(200).json({ shared: true, shareUrl: shareUrlFor(note.shareToken), sharedAt: note.sharedAt });
+};
+
+// Idempotent by design: calling this again on an already-shared note
+// returns the existing link rather than rotating it, so re-opening the
+// share panel later never invalidates a link someone already has. Rotating
+// is what DELETE (revoke) followed by this endpoint again is for.
+const shareNote = async (req, res) => {
+  const owned = await loadOwnedNote(req.params.id, req.user.id, 'share');
+  if (owned.deletedAt || owned.archivedAt) {
+    throw new HttpError(400, 'Restore the note before sharing it');
+  }
+
+  const note = await Note.findById(owned._id).select('+shareToken +sharedAt');
+  if (!note.shareToken) {
+    note.shareToken = generateShareToken();
+    note.sharedAt = new Date();
+    await note.save();
+  }
+
+  res.status(200).json({ shared: true, shareUrl: shareUrlFor(note.shareToken), sharedAt: note.sharedAt });
+};
+
+// Allowed regardless of archived/trashed state on purpose — the owner must
+// always be able to revoke a link, including for a note they've since
+// archived (which already hides it from the public route, but the link
+// itself should stop existing too, not just stop resolving for as long as
+// it stays archived).
+const unshareNote = async (req, res) => {
+  const owned = await loadOwnedNote(req.params.id, req.user.id, 'unshare');
+  // $unset, not `shareToken: null` — see the model comment: the sparse
+  // unique index only exempts a field that's genuinely missing, not one
+  // present with value null, so this has to remove the field entirely
+  // rather than nulling it.
+  await Note.findByIdAndUpdate(owned._id, { $unset: { shareToken: 1 }, $set: { sharedAt: null } });
+  res.status(200).json({ shared: false });
 };
 
 const getNoteVersions = async (req, res) => {
@@ -921,6 +978,9 @@ module.exports = {
   togglePinNote,
   archiveNote,
   unarchiveNote,
+  getShareStatus,
+  shareNote,
+  unshareNote,
   getNoteVersions,
   restoreNoteVersion,
   processNoteWithAI,

@@ -84,6 +84,38 @@ const noteSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  // Public read-only sharing. Stored in recoverable form (not hashed like
+  // PasswordResetToken) — deliberately: that token protects against account
+  // takeover and is single-use/transient (lives only in an email), so
+  // hashing costs nothing. This one grants read access to ONE note the
+  // owner explicitly chose to publish, and the owner needs to revisit and
+  // re-copy the same link later (e.g. from a different device) — hashing
+  // would make that impossible since the raw value can't be recovered.
+  // Its own unguessability (160 bits from crypto.randomBytes, see
+  // noteController.generateShareToken) is what makes it safe, the same way
+  // an unlisted Google Doc/Notion share link is.
+  //
+  // No `default` on purpose (not even `default: null`) — this participates
+  // in a sparse unique index, and MongoDB's sparse only exempts a field
+  // that's genuinely *missing* from a document, not one present with value
+  // null. Multiple not-shared notes each explicitly holding `null` would
+  // collide on the unique constraint the moment a second one saved; leaving
+  // the field entirely absent (via $unset on unshare, never `= null`) is
+  // what keeps "not shared" notes from colliding with each other.
+  shareToken: {
+    type: String,
+    unique: true,
+    sparse: true,
+    select: false,
+  },
+  // select:false alongside shareToken (not a general-purpose field) — both
+  // are only ever fetched together via the dedicated /:id/share endpoints,
+  // keeping the regular note payload (list, getNoteById) unchanged.
+  sharedAt: {
+    type: Date,
+    default: null,
+    select: false,
+  },
 }, { timestamps: true });
 
 // Matches getNotes' primary query+sort pattern (filter by user, newest first).

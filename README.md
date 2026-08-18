@@ -280,9 +280,10 @@ bucket; only keys from genuinely separate projects add capacity.
 
 ## API reference
 
-74 routes. All `/api/notes`, `/api/flashcards`, `/api/admin`,
+79 routes. All `/api/notes`, `/api/flashcards`, `/api/admin`,
 `/api/notifications` and `/api/resurface` endpoints require
-`Authorization: Bearer <token>`.
+`Authorization: Bearer <token>`. `/api/public/notes/:token` is the one
+deliberate exception — see below.
 
 <details>
 <summary><b>Auth</b> — <code>/api/auth</code></summary>
@@ -315,6 +316,7 @@ bucket; only keys from genuinely separate projects add capacity.
 | POST | `/:id/restore` | Restore from trash |
 | DELETE | `/:id/permanent` | Hard delete with full cascade |
 | PATCH | `/:id/pin` · `/:id/archive` · `/:id/unarchive` | Lifecycle |
+| GET · POST · DELETE | `/:id/share` | Read status · create/return the public link · revoke |
 | GET | `/:id/versions` | Version history |
 | POST | `/:id/versions/:versionId/restore` | Restore a version |
 | POST | `/ask` | Cross-note Q&A (streamed) |
@@ -371,6 +373,20 @@ may since have been deleted, and the log must stay readable.
 
 Health check: `GET /healthz` (unauthenticated) returns process uptime and
 database connectivity.
+
+<details>
+<summary><b>Public</b> — <code>/api/public</code>, no auth (deliberately)</summary>
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/notes/:token` | A note the owner has shared — title, content, tags only; never the owner, embedding, or the token itself |
+
+Mounted as its own router in `app.js`, separate from `noteRoutes.js`, so it
+can never end up behind `protect` by accident. Rate-limited by IP (no
+per-account quota exists for an anonymous caller). Response carries
+`X-Robots-Tag: noindex, nofollow`.
+
+</details>
 
 ---
 

@@ -29,6 +29,9 @@ const {
   togglePinNote,
   archiveNote,
   unarchiveNote,
+  getShareStatus,
+  shareNote,
+  unshareNote,
   getNoteVersions,
   restoreNoteVersion,
   processNoteWithAI,
@@ -74,6 +77,9 @@ router.delete('/:id/permanent', protect, permanentlyDeleteNote);
 router.patch('/:id/pin', protect, togglePinNote);
 router.patch('/:id/archive', protect, archiveNote);
 router.patch('/:id/unarchive', protect, unarchiveNote);
+router.get('/:id/share', protect, getShareStatus);
+router.post('/:id/share', protect, shareNote);
+router.delete('/:id/share', protect, unshareNote);
 router.get('/:id/versions', protect, getNoteVersions);
 router.post('/:id/versions/:versionId/restore', protect, restoreNoteVersion);
 router.post('/:id/ai-process', protect, aiLimiter, enforceAiQuota, processNoteWithAI);

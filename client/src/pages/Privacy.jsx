@@ -9,7 +9,7 @@ import LegalPageLayout from '../components/LegalPageLayout'
 // without both files being updated together again.
 function Privacy() {
 	return (
-		<LegalPageLayout title="Privacy Policy" updated="August 17, 2026">
+		<LegalPageLayout title="Privacy Policy" updated="August 18, 2026">
 			<p>
 				NoteMind ("we", "us") is a free note-taking application. This page explains what
 				information we collect, how we use it, and the choices you have. If anything here is
@@ -30,6 +30,15 @@ function Privacy() {
 				generate a response. This only happens when you actively use one of these features. Google
 				processes that content under its own API terms and privacy policy; we don't control how
 				Google's infrastructure handles it beyond what those terms specify.
+			</p>
+
+			<h2>Sharing a note</h2>
+			<p>
+				Notes are private by default — visible only to you. If you choose to share a note,
+				we generate a unique link for it; anyone who has that link can view that one note
+				without signing in, until you turn sharing off for it. A shared note's link is
+				not discoverable or searchable — we don't index it and don't publish a list of
+				shared notes anywhere. Turning sharing off immediately invalidates the link.
 			</p>
 
 			<h2>Cookies</h2>

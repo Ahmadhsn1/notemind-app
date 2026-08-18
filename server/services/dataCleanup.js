@@ -150,4 +150,7 @@ const purgeUsers = async (userIds) => {
   };
 };
 
-module.exports = { purgeNotes, purgeUsers };
+// Also reused by publicNoteController.js to find and re-sign image
+// references in a shared note's HTML — the canonical "what counts as an
+// upload reference" regex, kept in one place rather than duplicated.
+module.exports = { purgeNotes, purgeUsers, imageFilenamesIn };
