@@ -2,8 +2,23 @@ import {useEffect, useRef, useState} from 'react'
 import api from '../api/axios'
 import NoteEditor from './NoteEditor'
 import ConfirmModal from './ConfirmModal'
+import SaveAsTemplateModal from './SaveAsTemplateModal'
 import useModalA11y from '../hooks/useModalA11y'
 import {useToast} from '../context/ToastContext'
+
+const PENCIL_PATH = <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></>
+const BOOKMARK_PATH = <path d="M7 3h10a1 1 0 0 1 1 1v16l-6-4-6 4V4a1 1 0 0 1 1-1Z" />
+const TAG_PATH = <><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V4a1 1 0 0 1 1-1h8a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6Z" /><circle cx="7.5" cy="7.5" r="1.2" /></>
+const FOLDER_PATH = <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+const BELL_PATH = <><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" /><path d="M10 20a2 2 0 0 0 4 0" /></>
+
+function FieldIcon({path}) {
+	return (
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/35 pointer-events-none">
+			{path}
+		</svg>
+	)
+}
 
 function NoteFormModal({
 	isOpen,
@@ -29,6 +44,7 @@ function NoteFormModal({
 }) {
 	const [titleLoading, setTitleLoading] = useState(false)
 	const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+	const [showSaveTemplate, setShowSaveTemplate] = useState(false)
 	const toast = useToast()
 
 	// Snapshots the fields worth confirming before discarding, captured fresh
@@ -109,6 +125,18 @@ function NoteFormModal({
 		}
 	}
 
+	const hasSaveableContent = !!(title.trim() || bodyPlainText.trim())
+
+	const handleSaveAsTemplate = async (name) => {
+		try {
+			await api.post('/templates', {name, title, contentHtml})
+			toast.success('Template saved.')
+			setShowSaveTemplate(false)
+		} catch (err) {
+			toast.error(err.response?.data?.message || 'Could not save template. Try again.')
+		}
+	}
+
 	return (
 		<>
 		<div
@@ -121,18 +149,35 @@ function NoteFormModal({
 				aria-modal="true"
 				aria-label={isEditing ? 'Edit note' : 'New note'}
 				tabIndex={-1}
-				className="w-full max-w-[440px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[20px] p-4 min-[381px]:p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)] outline-none"
+				className="w-full max-w-[620px] bg-[linear-gradient(160deg,var(--color-panel-a),var(--color-panel-b))] border border-accent/35 rounded-[22px] p-4 min-[381px]:p-6 min-[641px]:p-7 shadow-[0_24px_60px_rgba(0,0,0,0.45)] outline-none"
 			>
-				<div className="flex items-center justify-between mb-3.5">
-					<h3 className="text-base font-bold">{isEditing ? 'Edit note' : 'New note'}</h3>
-					<button
-						onClick={handleAttemptClose}
-						aria-label="Close"
-						className="w-7 h-7 p-0 rounded-[8px] bg-ink/6 border-none text-ink/62 text-xs font-semibold cursor-pointer transition-[opacity,transform] duration-200 hover:bg-ink/10 hover:opacity-100 active:scale-[0.98]"
-					>✕</button>
+				<div className="flex items-center justify-between mb-4">
+					<div className="flex items-center gap-2.5">
+						<div className="w-8 h-8 rounded-[9px] bg-accent/16 border border-accent/25 flex items-center justify-center text-accent shrink-0">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{PENCIL_PATH}</svg>
+						</div>
+						<h3 className="text-[15.5px] font-bold">{isEditing ? 'Edit note' : 'New note'}</h3>
+					</div>
+					<div className="flex items-center gap-1.5">
+						<button
+							type="button"
+							onClick={() => setShowSaveTemplate(true)}
+							disabled={!hasSaveableContent}
+							aria-label="Save as template"
+							title="Save as template"
+							className="w-7 h-7 p-0 rounded-[8px] bg-ink/6 border border-transparent text-ink/55 cursor-pointer transition-[opacity,transform,background-color] duration-200 hover:bg-accent/16 hover:text-accent active:scale-[0.98] disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-ink/6 disabled:hover:text-ink/55 flex items-center justify-center"
+						>
+							<svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{BOOKMARK_PATH}</svg>
+						</button>
+						<button
+							onClick={handleAttemptClose}
+							aria-label="Close"
+							className="w-7 h-7 p-0 rounded-[8px] bg-ink/6 border-none text-ink/62 text-xs font-semibold cursor-pointer transition-[opacity,transform] duration-200 hover:bg-ink/10 hover:opacity-100 active:scale-[0.98]"
+						>✕</button>
+					</div>
 				</div>
 
-				<form onSubmit={onSubmit} className="flex flex-col gap-3">
+				<form onSubmit={onSubmit} className="flex flex-col gap-3.5">
 					<div className="relative flex items-center">
 						<input
 							type="text"
@@ -142,7 +187,7 @@ function NoteFormModal({
 							autoFocus
 							required
 							maxLength={300}
-							className="input-base w-full pr-10"
+							className="input-base w-full pr-10 text-[15px] font-semibold"
 						/>
 						<button
 							type="button"
@@ -164,51 +209,64 @@ function NoteFormModal({
 						currentNoteId={editingId}
 					/>
 
-					<input
-						type="text"
-						placeholder="Tags, comma separated"
-						value={tags}
-						onChange={(e) => onTagsChange(e.target.value)}
-						className="input-base"
-					/>
+					<div className="flex flex-col gap-3 pt-3 border-t border-ink/10">
+						<div className="grid grid-cols-1 min-[481px]:grid-cols-2 gap-2.5">
+							<div className="relative flex items-center">
+								<FieldIcon path={TAG_PATH} />
+								<input
+									type="text"
+									placeholder="Tags, comma separated"
+									value={tags}
+									onChange={(e) => onTagsChange(e.target.value)}
+									className="input-base w-full pl-8"
+								/>
+							</div>
 
-					{addingFolder ? (
-						<input
-							type="text"
-							placeholder="New folder name"
-							value={folder}
-							onChange={(e) => onFolderChange(e.target.value)}
-							autoFocus
-							className="input-base"
-						/>
-					) : (
-						<select value={folder} onChange={handleFolderSelect} className="input-base">
-							{existingFolders.map((f) => (
-								<option key={f} value={f}>{f}</option>
-							))}
-							<option value="__new__">+ New folder</option>
-						</select>
-					)}
+							<div className="relative flex items-center">
+								<FieldIcon path={FOLDER_PATH} />
+								{addingFolder ? (
+									<input
+										type="text"
+										placeholder="New folder name"
+										value={folder}
+										onChange={(e) => onFolderChange(e.target.value)}
+										autoFocus
+										className="input-base w-full pl-8"
+									/>
+								) : (
+									<select value={folder} onChange={handleFolderSelect} className="input-base w-full pl-8">
+										{existingFolders.map((f) => (
+											<option key={f} value={f}>{f}</option>
+										))}
+										<option value="__new__">+ New folder</option>
+									</select>
+								)}
+							</div>
+						</div>
 
-					<div className="flex flex-col gap-1.5">
-						<label className="text-[12px] text-ink/50" htmlFor="note-reminder">Remind me</label>
-						<div className="flex items-center gap-2">
-							<input
-								id="note-reminder"
-								type="datetime-local"
-								value={reminderAt}
-								onChange={(e) => onReminderChange(e.target.value)}
-								className="input-base flex-1"
-							/>
-							{reminderAt && (
-								<button
-									type="button"
-									onClick={() => onReminderChange('')}
-									aria-label="Clear reminder"
-									title="Clear reminder"
-									className="w-9 h-9 shrink-0 rounded-[10px] flex items-center justify-center bg-ink/6 border border-ink/12 text-ink/62 cursor-pointer transition-[opacity,transform] duration-200 hover:bg-ink/10 active:scale-[0.98]"
-								>✕</button>
-							)}
+						<div className="flex flex-col gap-1.5">
+							<label className="flex items-center gap-1.5 text-[12px] text-ink/50" htmlFor="note-reminder">
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{BELL_PATH}</svg>
+								Remind me
+							</label>
+							<div className="flex items-center gap-2">
+								<input
+									id="note-reminder"
+									type="datetime-local"
+									value={reminderAt}
+									onChange={(e) => onReminderChange(e.target.value)}
+									className="input-base flex-1"
+								/>
+								{reminderAt && (
+									<button
+										type="button"
+										onClick={() => onReminderChange('')}
+										aria-label="Clear reminder"
+										title="Clear reminder"
+										className="w-9 h-9 shrink-0 rounded-[10px] flex items-center justify-center bg-ink/6 border border-ink/12 text-ink/62 cursor-pointer transition-[opacity,transform] duration-200 hover:bg-ink/10 active:scale-[0.98]"
+									>✕</button>
+								)}
+							</div>
 						</div>
 					</div>
 
@@ -239,6 +297,13 @@ function NoteFormModal({
 			confirmLabel="Discard"
 			onConfirm={handleConfirmDiscard}
 			onCancel={() => setShowDiscardConfirm(false)}
+		/>
+
+		<SaveAsTemplateModal
+			isOpen={showSaveTemplate}
+			defaultName={title}
+			onSave={handleSaveAsTemplate}
+			onCancel={() => setShowSaveTemplate(false)}
 		/>
 		</>
 	)

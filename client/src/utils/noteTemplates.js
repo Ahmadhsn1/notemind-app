@@ -3,6 +3,12 @@
 // TaskList/TaskItem's data-type/data-checked markup — so a selected template
 // round-trips through save/sanitize/reload with no special-casing anywhere
 // else in the app.
+//
+// This array is the built-in, code-only set — not editable or deletable by a
+// user. User-authored templates (create/rename/rewrite/delete, all through
+// TemplatePickerModal's own "New template"/edit flow) are a separate,
+// server-backed resource (server/models/Template.js, /api/templates) fetched
+// at runtime, not added here.
 export const NOTE_TEMPLATES = [
 	{
 		key: 'blank',

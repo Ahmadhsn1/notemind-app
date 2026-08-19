@@ -11,6 +11,7 @@ const Notification = require('../models/Notification');
 const AdminAuditLog = require('../models/AdminAuditLog');
 const AiUsage = require('../models/AiUsage');
 const PasswordResetToken = require('../models/PasswordResetToken');
+const Template = require('../models/Template');
 
 // An in-memory MongoDB rather than a shared test database: the suite can run
 // on any machine and in CI with no external service, and every run starts
@@ -28,7 +29,7 @@ const stopDb = async () => {
   await mongod?.stop();
 };
 
-const ALL_MODELS = [User, Note, NoteVersion, Flashcard, Resurface, Notification, AdminAuditLog, AiUsage, PasswordResetToken];
+const ALL_MODELS = [User, Note, NoteVersion, Flashcard, Resurface, Notification, AdminAuditLog, AiUsage, PasswordResetToken, Template];
 
 const clearDb = async () => {
   await Promise.all(ALL_MODELS.map((model) => model.deleteMany({})));

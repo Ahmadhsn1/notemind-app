@@ -27,6 +27,7 @@ const flashcardRoutes = require('./routes/flashcardRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const resurfaceRoutes = require('./routes/resurfaceRoutes');
+const templateRoutes = require('./routes/templateRoutes');
 const publicNoteRoutes = require('./routes/publicNoteRoutes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const { globalLimiter } = require('./middleware/rateLimit');
@@ -96,6 +97,7 @@ app.use('/api/flashcards', flashcardRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/resurface', resurfaceRoutes);
+app.use('/api/templates', templateRoutes);
 // Deliberately outside every other mount's auth story — see
 // routes/publicNoteRoutes.js's own comment for why this is a separate
 // router rather than a route inside noteRoutes.js.
