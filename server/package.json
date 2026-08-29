@@ -10,8 +10,8 @@
     "test:watch": "vitest"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Ahmad Hassan",
+  "license": "MIT",
   "type": "commonjs",
   "engines": {
     "node": ">=20"

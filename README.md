@@ -9,15 +9,19 @@ into spaced-repetition flashcards, and connected to each other through
 wikilinks rendered as a live force-directed graph — all free, with no ads
 and no paid tier.
 
-[![CI](https://github.com/Ahmadhsn1/notemind-app/actions/workflows/ci.yml/badge.svg)](https://github.com/Ahmadhsn1/notemind-app/actions/workflows/ci.yml)
+[![CI](https://github.com/Ahmadhsn1/notemind-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Ahmadhsn1/notemind-ai/actions/workflows/ci.yml)
+![Tests](https://img.shields.io/badge/tests-173%20passing-2ea44f?logo=vitest&logoColor=white)
+![Vulnerabilities](https://img.shields.io/badge/npm%20audit-0-2ea44f)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white)
-![License](https://img.shields.io/badge/license-ISC-blue)
+![Gemini](https://img.shields.io/badge/Google-Gemini-8E75B2?logo=googlegemini&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 
 ```
-159 tests · 0 vulnerabilities · 79 API routes · 9 collections · 13 test suites
+173 tests · 0 vulnerabilities · 83 API routes · 10 collections · 14 test suites
 ```
 
 Beyond the product surface, this repository is a study in taking a working
@@ -27,6 +31,10 @@ controls on metered AI, DST-safe date arithmetic, and a test suite built
 specifically around the invariants the security model rests on — validated
 by reintroducing real, previously-shipped bugs and confirming the suite
 actually catches each one.
+
+> **[Read the engineering dossier &rarr;](https://ahmadhsn1.github.io/notemind-ai/)**
+> &nbsp;— a visual walk-through of the architecture, the decisions worth
+> questioning, and the testing approach.
 
 <p align="center">
   <img src="docs/screenshots/landing.png" alt="NoteMind landing page" width="100%">
@@ -47,6 +55,7 @@ actually catches each one.
 - [Operations](#operations)
 - [Deployment](#deployment)
 - [Security summary](#security-summary)
+- [Contributing](#contributing)
 
 ---
 
@@ -147,8 +156,12 @@ the same SPA build.
 
 ## Architecture
 
+<p align="center">
+  <img src="docs/architecture.svg" alt="NoteMind system architecture: React SPA on Vercel, Express + Socket.IO API on Render, MongoDB Atlas, Cloudflare R2, and Google Gemini" width="100%">
+</p>
+
 ```
-notemind-app/
+notemind-ai/
 ├── client/                        React 19 · Vite · Tailwind 4 → Vercel
 │   ├── public/sw.js               Offline-read service worker
 │   ├── vercel.json                SPA routing + security headers
@@ -165,8 +178,8 @@ notemind-app/
     ├── config/env.js              Zod-validated configuration, fails fast
     ├── controllers/               Route handlers
     ├── middleware/                Auth, admin, validation, rate limit, AI quota
-    ├── models/                    9 Mongoose schemas
-    ├── routes/                    79 route definitions
+    ├── models/                    10 Mongoose schemas
+    ├── routes/                    83 route definitions
     ├── services/                  AI, email, storage, cleanup, sockets, scheduler
     ├── scripts/                   Maintenance and migration
     ├── tests/                     Vitest + Supertest, in-memory MongoDB
@@ -306,8 +319,8 @@ clicking through the flow in a browser and checking `document.activeElement`.
 features.
 
 ```bash
-git clone https://github.com/Ahmadhsn1/notemind-app.git
-cd notemind-app
+git clone https://github.com/Ahmadhsn1/notemind-ai.git
+cd notemind-ai
 ```
 
 **Server**
@@ -374,7 +387,7 @@ bucket; only keys from genuinely separate projects add capacity.
 
 ## API reference
 
-79 routes. All `/api/notes`, `/api/flashcards`, `/api/admin`,
+83 routes. All `/api/notes`, `/api/flashcards`, `/api/admin`,
 `/api/notifications` and `/api/resurface` endpoints require
 `Authorization: Bearer <token>`. `/api/public/notes/:token` is the one
 deliberate exception — see below.
@@ -492,7 +505,7 @@ cd server && npm test
 ```
 
 Vitest + Supertest against an in-memory MongoDB — no external services, no
-fixtures to reset, no shared state between runs. 159 tests across 13 files.
+fixtures to reset, no shared state between runs. 173 tests across 14 files.
 
 Coverage is targeted rather than exhaustive: it covers the invariants that
 carry the security model, chosen so that breaking one fails loudly.
@@ -511,6 +524,8 @@ carry the security model, chosen so that breaking one fails loudly.
 | `adminGuards` | The last remaining admin can never be demoted or deleted through the admin surface |
 | `streaks` | Note, flashcard, and resurfacing streaks stay correct across a real DST boundary |
 | `shareNote` | Full share lifecycle — create, idempotency, revoke, and that the public payload never leaks owner identity |
+| `scheduler` | Due-reminder and weekly-digest jobs fire on schedule, dedupe, and no-op cleanly with no email provider configured |
+| `templates` | Built-in and user-authored note templates round-trip through HTML sanitisation with nothing stripped |
 
 The suite was validated by reintroducing previously fixed bugs and confirming
 each one was caught — a test that passes with the defect present is worse
@@ -603,6 +618,13 @@ build on every push and pull request against `main`.
 
 ---
 
+## Contributing
+
+Issues and pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for setup, the test bar, and PR style. Security reports go through the private
+channel in [`SECURITY.md`](.github/SECURITY.md), never a public issue. All
+participation is under the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
-ISC
+[MIT](LICENSE) © Ahmad Hassan

@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # client/ and server/ are independent npm projects — each gets its own config.
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      client-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # react-router is deliberately pinned — see README "accepted dependency risk".
+      - dependency-name: react-router-dom
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /server
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      server-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # archiver v8 is a breaking ESM rewrite — see README "accepted dependency risk".
+      - dependency-name: archiver
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

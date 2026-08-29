@@ -1,0 +1,50 @@
+name: Bug report
+description: Something is broken or behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For security vulnerabilities, **stop** and see
+        [SECURITY.md](https://github.com/Ahmadhsn1/notemind-ai/blob/main/.github/SECURITY.md)
+        instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        1. Opened the Ask AI modal
+        2. Asked a question, closed the modal mid-answer
+        3. Next question never sends — spinner stuck
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Client (React / UI)
+        - Server (API)
+        - AI features (Gemini)
+        - Auth / accounts
+        - Admin surface
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Browser + OS, or Node version if it is a server issue
+      placeholder: Chrome 128 / macOS 14, or Node 24
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console / server output
+      description: Relevant errors. This is automatically formatted as code.
+      render: shell
+    validations:
+      required: false

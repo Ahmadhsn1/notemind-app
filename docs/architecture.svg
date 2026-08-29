@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 760" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <style>
+      .zone   { fill:#ffffff; stroke:#e2e8f0; stroke-width:1.5; rx:16; }
+      .zonelbl{ fill:#64748b; font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+      .card   { fill:#f8fafc; stroke:#cbd5e1; stroke-width:1.25; rx:10; }
+      .card-ai{ fill:#eef2ff; stroke:#c7d2fe; stroke-width:1.25; rx:10; }
+      .card-db{ fill:#ecfdf5; stroke:#a7f3d0; stroke-width:1.25; rx:10; }
+      .title  { fill:#0f172a; font-size:14px; font-weight:700; }
+      .sub    { fill:#475569; font-size:11.5px; }
+      .pill   { fill:#0f172a; font-size:11px; font-weight:600; }
+      .edge   { stroke:#94a3b8; stroke-width:1.75; fill:none; }
+      .edgelbl{ fill:#64748b; font-size:10.5px; font-weight:600; }
+      .hdr    { fill:#0f172a; font-size:20px; font-weight:800; }
+      .hdrsub { fill:#64748b; font-size:12.5px; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect width="1240" height="760" fill="#ffffff"/>
+  <text x="40" y="46" class="hdr">NoteMind &#8212; System Architecture</text>
+  <text x="40" y="68" class="hdrsub">React 19 SPA &#183; Express 5 API &#183; MongoDB Atlas &#183; Socket.IO &#183; Google Gemini &#8212; two independently deployed npm projects</text>
+
+  <!-- ===================== BROWSER ZONE ===================== -->
+  <rect x="40" y="96" width="300" height="560" class="zone"/>
+  <text x="56" y="122" class="zonelbl">Browser &#183; Vercel (static)</text>
+
+  <rect x="60" y="140" width="260" height="94" class="card"/>
+  <text x="76" y="164" class="title">React 19 SPA</text>
+  <text x="76" y="184" class="sub">Vite build &#183; Tailwind 4</text>
+  <text x="76" y="202" class="sub">Tiptap editor &#183; d3-force graph</text>
+  <text x="76" y="220" class="sub">AuthContext &#8594; localStorage token</text>
+
+  <rect x="60" y="248" width="260" height="78" class="card"/>
+  <text x="76" y="272" class="title">Transport</text>
+  <text x="76" y="292" class="sub">Axios instance (Bearer interceptor)</text>
+  <text x="76" y="310" class="sub">fetch + streams for AI &#38; export</text>
+
+  <rect x="60" y="340" width="260" height="74" class="card"/>
+  <text x="76" y="364" class="title">Service worker (PWA)</text>
+  <text x="76" y="384" class="sub">cache-first assets &#183; network-first shell</text>
+  <text x="76" y="402" class="sub">SWR note reads, partitioned per user</text>
+
+  <rect x="60" y="428" width="260" height="66" class="card"/>
+  <text x="76" y="452" class="title">Public marketing site</text>
+  <text x="76" y="472" class="sub">landing, features, use-cases, changelog</text>
+  <text x="76" y="488" class="sub">served from the same SPA build</text>
+
+  <rect x="60" y="508" width="260" height="66" class="card-db"/>
+  <text x="76" y="532" class="title">Shared public note view</text>
+  <text x="76" y="552" class="sub">no account &#183; read-only</text>
+  <text x="76" y="568" class="sub">signed per-image URLs</text>
+
+  <!-- ===================== API ZONE ===================== -->
+  <rect x="410" y="96" width="430" height="620" class="zone"/>
+  <text x="426" y="122" class="zonelbl">API &#183; Render (long-running Docker)</text>
+
+  <rect x="430" y="140" width="390" height="60" class="card"/>
+  <text x="446" y="164" class="title">http.createServer(app)</text>
+  <text x="446" y="184" class="sub">Express 5 + Socket.IO share one port &#183; helmet / CORS allowlist / CSP</text>
+
+  <rect x="430" y="214" width="390" height="140" class="card"/>
+  <text x="446" y="238" class="title">Middleware pipeline</text>
+  <rect x="446" y="252" width="120" height="30" fill="#ffffff" stroke="#cbd5e1" rx="7"/>
+  <text x="506" y="272" text-anchor="middle" class="pill">protect (JWT)</text>
+  <rect x="574" y="252" width="150" height="30" fill="#ffffff" stroke="#cbd5e1" rx="7"/>
+  <text x="649" y="272" text-anchor="middle" class="pill">requireAdmin (DB role)</text>
+  <rect x="446" y="290" width="150" height="30" fill="#ffffff" stroke="#cbd5e1" rx="7"/>
+  <text x="521" y="310" text-anchor="middle" class="pill">validateBody (Zod)</text>
+  <rect x="604" y="290" width="120" height="30" fill="#ffffff" stroke="#cbd5e1" rx="7"/>
+  <text x="664" y="310" text-anchor="middle" class="pill">rateLimit (Mongo)</text>
+  <rect x="446" y="328" width="150" height="30" fill="#ffffff" stroke="#cbd5e1" rx="7"/>
+  <text x="521" y="348" text-anchor="middle" class="pill">aiQuota (per user/day)</text>
+  <rect x="604" y="328" width="120" height="30" fill="#ffffff" stroke="#cbd5e1" rx="7"/>
+  <text x="664" y="348" text-anchor="middle" class="pill">errorHandler</text>
+
+  <rect x="430" y="368" width="390" height="52" class="card"/>
+  <text x="446" y="390" class="title">Controllers</text>
+  <text x="446" y="408" class="sub">fetch-then-check ownership &#183; throw HttpError(status, msg)</text>
+
+  <rect x="430" y="434" width="390" height="150" class="card-ai"/>
+  <text x="446" y="458" class="title">Services</text>
+  <text x="446" y="478" class="sub">aiService &#8212; strict-JSON prompts, retry, streaming</text>
+  <text x="446" y="496" class="sub">geminiKeyPool &#8212; round-robin, quota-aware cooldowns</text>
+  <text x="446" y="514" class="sub">dataCleanup &#8212; one cascade path, zero orphans</text>
+  <text x="446" y="532" class="sub">imageSignature &#183; email &#183; noteExport &#183; resurface</text>
+  <text x="446" y="550" class="sub">scheduler &#8212; reminders (5 min), weekly digest</text>
+  <text x="446" y="568" class="sub">socket &#8212; admin room, re-auth per connection</text>
+
+  <rect x="430" y="598" width="390" height="100" class="card"/>
+  <text x="446" y="622" class="title">Models &#8212; Mongoose (10 collections)</text>
+  <text x="446" y="642" class="sub">User &#183; Note &#183; NoteVersion &#183; Flashcard &#183; AiUsage</text>
+  <text x="446" y="660" class="sub">Notification &#183; Resurface &#183; Template</text>
+  <text x="446" y="678" class="sub">PasswordResetToken &#183; AdminAuditLog</text>
+
+  <!-- ===================== DATA / EXTERNAL ZONE ===================== -->
+  <rect x="910" y="96" width="290" height="560" class="zone"/>
+  <text x="926" y="122" class="zonelbl">Data &#38; external services</text>
+
+  <rect x="930" y="140" width="250" height="86" class="card-db"/>
+  <text x="946" y="164" class="title">MongoDB Atlas</text>
+  <text x="946" y="184" class="sub">primary datastore</text>
+  <text x="946" y="202" class="sub">+ rate-limit &#38; job state</text>
+  <text x="946" y="220" class="sub">in-memory Mongo in tests</text>
+
+  <rect x="930" y="240" width="250" height="80" class="card-db"/>
+  <text x="946" y="264" class="title">Cloudflare R2</text>
+  <text x="946" y="284" class="sub">note image object storage</text>
+  <text x="946" y="302" class="sub">local disk fallback if unset</text>
+
+  <rect x="930" y="334" width="250" height="96" class="card-ai"/>
+  <text x="946" y="358" class="title">Google Gemini</text>
+  <text x="946" y="378" class="sub">gemini-flash-latest</text>
+  <text x="946" y="396" class="sub">768-dim embeddings</text>
+  <text x="946" y="414" class="sub">multi-key pool, per-key cooldown</text>
+
+  <rect x="930" y="444" width="250" height="80" class="card"/>
+  <text x="946" y="468" class="title">Email</text>
+  <text x="946" y="488" class="sub">Gmail SMTP or Resend</text>
+  <text x="946" y="506" class="sub">half-configured &#8594; refuses boot</text>
+
+  <rect x="930" y="538" width="250" height="100" class="card"/>
+  <text x="946" y="562" class="title">Observability</text>
+  <text x="946" y="582" class="sub">pino structured JSON logs</text>
+  <text x="946" y="600" class="sub">secret / note-body redaction</text>
+  <text x="946" y="618" class="sub">Sentry (optional) &#183; /healthz</text>
+
+  <!-- ===================== EDGES ===================== -->
+  <path class="edge" d="M340,280 H408" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="346" y="272" class="edgelbl">HTTPS REST</text>
+
+  <path class="edge" d="M340,300 H408" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="346" y="316" class="edgelbl">WSS &#183; Socket.IO</text>
+
+  <path class="edge" d="M340,540 C374,540 378,166 406,164" marker-end="url(#arrow)"/>
+  <text x="346" y="560" class="edgelbl">unauth /api/public</text>
+
+  <path class="edge" d="M820,640 H874 V180 H928" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="878" y="360" class="edgelbl">Mongoose</text>
+
+  <path class="edge" d="M820,486 H900 V278 H928" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <path class="edge" d="M900,486 V382 H928" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <path class="edge" d="M900,486 V484 H928" marker-end="url(#arrow)"/>
+  <text x="856" y="478" class="edgelbl">HTTPS / S3 / SMTP</text>
+
+  <!-- ===================== LEGEND ===================== -->
+  <rect x="410" y="726" width="16" height="16" class="card-ai"/>
+  <text x="434" y="739" class="sub">AI path</text>
+  <rect x="500" y="726" width="16" height="16" class="card-db"/>
+  <text x="524" y="739" class="sub">data store / unauthenticated</text>
+  <rect x="720" y="726" width="16" height="16" class="card"/>
+  <text x="744" y="739" class="sub">application layer</text>
+</svg>

@@ -53,7 +53,7 @@ jobs:
         with:
           path: server/node_modules/.cache/mongodb-memory-server
           key: mongo-binary-${{ runner.os }}-7.0.14
-      - run: npm test   # 69 tests, in-memory MongoDB
+      - run: npm test   # 173 tests, in-memory MongoDB
 
   docker:
     name: Server image builds
